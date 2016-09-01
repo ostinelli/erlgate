@@ -1,0 +1,20 @@
+{application, erlgate,
+    [
+        {description, "An alternative transport for Erlang messages across nodes."},
+        {vsn, "0.1.0"},
+        {registered, [
+        ]},
+        {applications, [
+            kernel,
+            stdlib,
+            poolboy,
+            asn1,
+            crypto,
+            public_key,
+            ssl,
+            ranch
+        ]},
+        {mod, {erlgate_app, []}},
+        {env, []}
+    ]
+}.
