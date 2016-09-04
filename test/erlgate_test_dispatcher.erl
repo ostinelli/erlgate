@@ -37,6 +37,8 @@ handle_call(Message, Options) ->
     if
         WithOptions =:= true ->
             {called_with_options, Message};
+        RaiseError =:= true ->
+            exit(blow_up);
         true ->
             timer:sleep(200),
             {received, Message}
