@@ -34,6 +34,7 @@
 %% tests
 -export([
     call_one_way/1,
+    call_one_way_with_options/1,
     call_one_way_with_timeout/1,
     call_both_ways/1
 ]).
@@ -74,6 +75,7 @@ groups() ->
     [
         {end_to_end, [shuffle], [
             call_one_way,
+            call_one_way_with_options,
             call_one_way_with_timeout,
             call_both_ways
         ]}
@@ -162,6 +164,22 @@ call_one_way(Config) ->
     %% call from local to remote and get response back
     {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
     {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>).
+
+call_one_way_with_options(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    erlgate_test_suite_helper:set_environment_variables(node(), main),
+    erlgate_test_suite_helper:set_environment_variables(SlaveNode, slave),
+    ok = application:unset_env(erlgate, channels_in),
+    ok = rpc:call(SlaveNode, application, unset_env, [erlgate, channels_out]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% call from local to remote and get response back
+    {called_with_options, <<"my test message">>} = erlgate:call(node_with_option, <<"my test message">>).
 
 call_one_way_with_timeout(Config) ->
     %% get slave

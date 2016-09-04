@@ -32,7 +32,11 @@
 -define(DEFAULT_ACCEPTOR_NUM, 10).
 
 %% specs
--type channel_in_spec() :: {ListenerPort :: non_neg_integer(), DispatcherModule :: atom()}.
+-type channel_in_spec() :: {
+    ListenerPort :: non_neg_integer(),
+    DispatcherModule :: atom(),
+    Options :: any()
+}.
 
 
 %% ===================================================================
@@ -54,7 +58,7 @@ start_listener() ->
 %% ===================================================================
 -spec start_channels_in([channel_in_spec()]) -> ok.
 start_channels_in([]) -> ok;
-start_channels_in([{ListenerPort, DispatcherModule} | T]) ->
+start_channels_in([{ListenerPort, DispatcherModule, Options} | T]) ->
     Acceptors = ?DEFAULT_ACCEPTOR_NUM,
     error_logger:info_msg("Starting ~p erlgate acceptors on port ~p", [Acceptors, ListenerPort]),
     %% start ranch
@@ -62,7 +66,7 @@ start_channels_in([{ListenerPort, DispatcherModule} | T]) ->
     {ok, _} = ranch:start_listener(Ref, Acceptors, ranch_tcp,
         [{port, ListenerPort}],
         erlgate_in,
-        [{dispatcher_module, DispatcherModule}]
+        [{dispatcher_module, DispatcherModule}, {options, Options}]
     ),
     %% loop
     start_channels_in(T).

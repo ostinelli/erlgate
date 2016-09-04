@@ -36,7 +36,8 @@
     transport = undefined :: atom(),
     channel_id = "" :: string(),
     messages = undefined :: any(),
-    dispatcher_module = undefined :: any()
+    dispatcher_module = undefined :: any(),
+    options = undefined :: any()
 }).
 
 %% ===================================================================
@@ -58,6 +59,7 @@ init(Ref, Socket, Transport, Opts) ->
     error_logger:info_msg("Opening erlgate channel IN '~s'", [ChannelId]),
     %% get options
     DispatcherModule = proplists:get_value(dispatcher_module, Opts),
+    Options = proplists:get_value(options, Opts),
     %% set options
     Transport:setopts(Socket, [binary, {packet, 4}]),
     %% get messages
@@ -68,7 +70,8 @@ init(Ref, Socket, Transport, Opts) ->
         transport = Transport,
         channel_id = ChannelId,
         messages = {OK, Closed, Error},
-        dispatcher_module = DispatcherModule
+        dispatcher_module = DispatcherModule,
+        options = Options
     },
     %% enter loop
     recv_loop(State).
@@ -108,9 +111,10 @@ parse_request(Data, #state{
 
 -spec process_message(Message :: any(), #state{}) -> ok.
 process_message({call, Message}, #state{
-    dispatcher_module = DispatcherModule
+    dispatcher_module = DispatcherModule,
+    options = Options
 } = State) ->
-    Reply = try DispatcherModule:handle_call(Message) of
+    Reply = try DispatcherModule:handle_call(Message, Options) of
         Reply0 -> Reply0
     catch Class:Reason ->
         Stacktrace = erlang:get_stacktrace(),

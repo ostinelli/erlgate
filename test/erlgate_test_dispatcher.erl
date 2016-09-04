@@ -27,10 +27,17 @@
 -behaviour(erlgate_dispatcher).
 
 %% API
--export([handle_call/1]).
+-export([handle_call/2]).
 
 %% TODO: should we use {reply, Message} formats?
--spec handle_call(Message :: any) -> ok | {error, Reason :: any()}.
-handle_call(Message) ->
-    timer:sleep(200),
-    {received, Message}.
+-spec handle_call(Message :: any, Options :: any()) -> ok | {error, Reason :: any()}.
+handle_call(Message, Options) ->
+    WithOptions = lists:member(with_options, Options),
+    RaiseError = lists:member(raise_error, Options),
+    if
+        WithOptions =:= true ->
+            {called_with_options, Message};
+        true ->
+            timer:sleep(200),
+            {received, Message}
+    end.

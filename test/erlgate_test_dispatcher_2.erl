@@ -27,9 +27,9 @@
 -behaviour(erlgate_dispatcher).
 
 %% API
--export([handle_call/1]).
+-export([handle_call/2]).
 
 %% TODO: should we use {reply, Message} formats?
--spec handle_call(Message :: any) -> ok | {error, Reason :: any()}.
-handle_call(Message) ->
+-spec handle_call(Message :: any, Options :: any()) -> ok | {error, Reason :: any()}.
+handle_call(Message, _Options) ->
     {received_from_2, Message}.
