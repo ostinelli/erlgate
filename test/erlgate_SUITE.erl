@@ -33,7 +33,8 @@
 
 %% tests
 -export([
-    end_to_end/1
+    one_way/1,
+    both_ways/1
 ]).
 
 %% include
@@ -53,7 +54,7 @@
 %% -------------------------------------------------------------------
 all() ->
     [
-        {group, integration}
+        {group, end_to_end}
     ].
 
 %% -------------------------------------------------------------------
@@ -70,8 +71,9 @@ all() ->
 %% -------------------------------------------------------------------
 groups() ->
     [
-        {integration, [shuffle], [
-            end_to_end
+        {end_to_end, [shuffle], [
+            one_way,
+            both_ways
         ]}
     ].
 %% -------------------------------------------------------------------
@@ -142,7 +144,24 @@ end_per_testcase(_TestCase, _Config) -> ok.
 %% ===================================================================
 %% Tests
 %% ===================================================================
-end_to_end(Config) ->
+one_way(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    erlgate_test_suite_helper:set_environment_variables(node(), main),
+    erlgate_test_suite_helper:set_environment_variables(SlaveNode, slave),
+    ok = application:unset_env(erlgate, channels_in),
+    ok = rpc:call(SlaveNode, application, unset_env, [erlgate, channels_out]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1100),
+    %% send a message from local to remote and get response back
+    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
+    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>).
+
+both_ways(Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
     %% set variables
