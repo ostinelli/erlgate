@@ -29,7 +29,6 @@
 -export([start/0, stop/0]).
 -export([call/2, call/3]).
 
-
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -51,9 +50,9 @@ stop() ->
 call(Cluster, Message) ->
     erlgate_out:call(Cluster, Message).
 
--spec call(Cluster :: atom(), Message :: any(), RetryTimeout :: non_neg_integer() | infinity) -> ok.
-call(Cluster, Message, RetryTimeout) ->
-    erlgate_out:call(Cluster, Message, RetryTimeout).
+-spec call(Cluster :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
+call(Cluster, Message, Timeout) ->
+    erlgate_out:call(Cluster, Message, Timeout).
 
 %% ===================================================================
 %% Private

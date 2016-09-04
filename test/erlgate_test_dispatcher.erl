@@ -32,4 +32,5 @@
 %% TODO: should we use {reply, Message} formats?
 -spec handle_call(Message :: any) -> ok | {error, Reason :: any()}.
 handle_call(Message) ->
+    timer:sleep(200),
     {received, Message}.

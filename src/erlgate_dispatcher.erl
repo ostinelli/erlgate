@@ -25,5 +25,4 @@
 %% ==========================================================================================================
 -module(erlgate_dispatcher).
 
-%% TODO: include from which cluster
 -callback handle_call(Message :: any()) -> Reply :: any().

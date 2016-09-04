@@ -44,9 +44,8 @@
 }).
 
 %% macros
--define(RECONNECT_TIMEOUT_MS, 1000).
--define(RETRY_SLEEP_MS, 1000).
--define(RESPONSE_TIMEOUT, 5000).
+-define(DEFAULT_RECONNECT_TIMEOUT_MS, 1000).
+-define(DEFAULT_RESPONSE_TIMEOUT, 30000).
 
 
 %% ===================================================================
@@ -56,22 +55,18 @@
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
--spec call(Cluster :: atom(), Message :: any()) -> ok.
-call(Cluster, Message) ->
-    call(Cluster, Message, infinity).
+-spec call(Channel :: atom(), Message :: any()) -> ok.
+call(Channel, Message) ->
+    call(Channel, Message, ?DEFAULT_RESPONSE_TIMEOUT).
 
--spec call(Cluster :: atom(), Message :: any(), RetryTimeout :: non_neg_integer() | infinity) -> ok.
-call(Cluster, Message, RetryTimeout) ->
-    poolboy:transaction(Cluster, fun(Worker) ->
-        case gen_server:call(Worker, {call, Message}, 30000) of
-            {error, _} when RetryTimeout =:= infinity ->
-                timer:sleep(?RETRY_SLEEP_MS),
-                call(Message, RetryTimeout);
-            {error, _} when RetryTimeout > 0 ->
-                timer:sleep(?RETRY_SLEEP_MS),
-                call(Message, RetryTimeout - ?RETRY_SLEEP_MS);
-            Result ->
-                Result
+-spec call(Channel :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
+call(Channel, Message, Timeout) ->
+    poolboy:transaction(Channel, fun(Worker) ->
+        case gen_server:call(Worker, {call, Message, Timeout}) of
+            {ok, Reply} ->
+                Reply;
+            {error, Reason} ->
+                exit({Reason, {original_call, {Channel, Message}}})
         end
     end).
 
@@ -117,7 +112,7 @@ init(Args) ->
 handle_call(_, _From, #state{socket = undefined} = State) ->
     {reply, {error, no_socket}, State};
 
-handle_call({call, Message}, _From, #state{
+handle_call({call, Message, Timeout}, _From, #state{
     channel_id = ChannelId,
     socket = Socket
 } = State) ->
@@ -125,22 +120,23 @@ handle_call({call, Message}, _From, #state{
     case gen_tcp:send(Socket, Data) of
         ok ->
             %% receive reply
-            case gen_tcp:recv(Socket, 0, ?RESPONSE_TIMEOUT) of
+            case gen_tcp:recv(Socket, 0, Timeout) of
                 {ok, ReplyData} ->
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
                             %% close socket
-                            error_logger:warning_msg("Received invalid response data from channel OUT '~s': ~p", [ChannelId, ReplyData]),
-                            State1 = timeout(State),
-                            {reply, {error, erlgate_invalid_response_data}, State1};
+                            error_logger:error_msg("Received invalid response data from channel OUT '~s': ~p", [ChannelId, ReplyData]),
+                            {stop, erlgate_invalid_response_data, {error, erlgate_invalid_response_data}, State};
                         Reply ->
-                            {reply, Reply, State}
-                    end
+                            {reply, {ok, Reply}, State}
+                    end;
+                {error, Reason} ->
+                    error_logger:error_msg("Error while waiting response from channel OUT '~s' to the call ~p: ~p", [ChannelId, Message, Reason]),
+                    {stop, Reason, {error, Reason}, State}
             end;
         {error, Reason} ->
-            error_logger:warning_msg("Error while sending to channel OUT '~s' the call ~p: ~p", [ChannelId, Data, Reason]),
-            State1 = timeout(State),
-            {reply, {error, Reason}, State1}
+            error_logger:error_msg("Error while sending to channel OUT '~s' the call ~p: ~p", [ChannelId, Message, Reason]),
+            {stop, Reason, {error, Reason}, State}
     end;
 
 handle_call(Request, From, State) ->
@@ -204,17 +200,32 @@ connect(#state{
     host = Host,
     port = Port
 } = State) ->
+    %% disconnect if necessary
+    State1 = disconnect(State),
+    %% connect
     case gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, 4}]) of
         {ok, Socket} ->
             error_logger:info_msg("Connected channel OUT '~s'", [ChannelId]),
-            State#state{socket = Socket};
+            State1#state{socket = Socket};
         {error, Reason} ->
             error_logger:error_msg("Error connecting channel OUT '~s': ~p, will try reconnecting in ~p ms", [
-                ChannelId, Reason, ?RECONNECT_TIMEOUT_MS
+                ChannelId, Reason, ?DEFAULT_RECONNECT_TIMEOUT_MS
             ]),
-            State1 = State#state{socket = undefined},
             timeout(State1)
     end.
+
+-spec disconnect(#state{}) -> #state{}.
+disconnect(#state{
+    socket = Socket
+} = State) when Socket =:= undefined ->
+    State;
+disconnect(#state{
+    channel_id = ChannelId,
+    socket = Socket
+} = State) ->
+    catch gen_tcp:close(Socket),
+    error_logger:info_msg("Disconnected channel OUT '~s'", [ChannelId]),
+    State#state{socket = undefined}.
 
 -spec timeout(#state{}) -> #state{}.
 timeout(#state{
@@ -224,5 +235,5 @@ timeout(#state{
         undefined -> ignore;
         _ -> erlang:cancel_timer(TimerPrevRef)
     end,
-    TimerRef = erlang:send_after(?RECONNECT_TIMEOUT_MS, self(), connect),
+    TimerRef = erlang:send_after(?DEFAULT_RECONNECT_TIMEOUT_MS, self(), connect),
     State#state{timer_ref = TimerRef}.
