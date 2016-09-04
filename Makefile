@@ -17,6 +17,13 @@ run:
 	-config erlgate \
 	-eval 'erlgate:start().'
 
+run2:
+	@erl -pa `rebar3 path` \
+	-name erlgate2@127.0.0.1 \
+	+K true \
+	-config erlgate2 \
+	-eval 'erlgate:start().'
+
 tests: all
 	ct_run -dir $(PROJECT_DIR)/test -logdir $(PROJECT_DIR)/test/results \
 	-pa `rebar3 path`

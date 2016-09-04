@@ -34,6 +34,7 @@
 -record(state, {
     socket = undefined :: any(),
     transport = undefined :: atom(),
+    channel_id = "" :: string(),
     messages = undefined :: any(),
     dispatcher_module = undefined :: any()
 }).
@@ -51,8 +52,10 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, Opts) ->
     %% ack
     ok = ranch:accept_ack(Ref),
-    {ok, {IP, Port}} = Transport:peername(Socket),
-    error_logger:info_msg("Incoming ErlGate connection from IN channel ~p", [{IP, Port}]),
+    %% build ref
+    {ok, {IpAddressTerm, Port}} = Transport:peername(Socket),
+    ChannelId = inet:ntoa(IpAddressTerm) ++ ":" ++ integer_to_list(Port),
+    error_logger:info_msg("Opening erlgate channel IN '~s'", [ChannelId]),
     %% get options
     DispatcherModule = proplists:get_value(dispatcher_module, Opts),
     %% set options
@@ -63,6 +66,7 @@ init(Ref, Socket, Transport, Opts) ->
     State = #state{
         socket = Socket,
         transport = Transport,
+        channel_id = ChannelId,
         messages = {OK, Closed, Error},
         dispatcher_module = DispatcherModule
     },
@@ -76,6 +80,7 @@ init(Ref, Socket, Transport, Opts) ->
 recv_loop(#state{
     socket = Socket,
     transport = Transport,
+    channel_id = ChannelId,
     messages = {OK, Closed, Error}
 } = State) ->
     Transport:setopts(Socket, [{active, once}]),
@@ -83,17 +88,19 @@ recv_loop(#state{
         {OK, Socket, Data} ->
             parse_request(Data, State);
         {Closed, Socket} ->
-            error_logger:info_msg("Remote IN channel got closed");
+            error_logger:info_msg("Channel IN '~s' got closed", [ChannelId]);
         {Error, Socket, Reason} ->
-            error_logger:warning_msg("Remote IN channel got error: ~p", [Reason])
+            error_logger:warning_msg("Channel IN '~s' got error: ~p", [ChannelId, Reason])
     end.
 
 -spec parse_request(Data :: binary(), #state{}) -> ok.
-parse_request(Data, State) ->
+parse_request(Data, #state{
+    channel_id = ChannelId
+} = State) ->
     case catch binary_to_term(Data) of
         {'EXIT', {badarg, _}} ->
             %% close socket
-            error_logger:warning_msg("Received invalid request data from IN channel: ~p", [Data]);
+            error_logger:warning_msg("Received invalid request data from channel IN '~s': ~p", [ChannelId, Data]);
         Message ->
             %% process message
             process_message(Message, State)

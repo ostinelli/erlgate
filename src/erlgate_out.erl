@@ -38,6 +38,7 @@
 -record(state, {
     host = "" :: string(),
     port = 0 :: non_neg_integer(),
+    channel_id = "" :: string(),
     socket = undefined :: undefined | any(),
     timer_ref = undefined :: undefined | reference()
 }).
@@ -90,10 +91,12 @@ init(Args) ->
     %% read options
     Host = proplists:get_value(host, Args),
     Port = proplists:get_value(port, Args),
+    ChannelId = proplists:get_value(channel_id, Args),
     %% build state
     State = #state{
         host = Host,
-        port = Port
+        port = Port,
+        channel_id = ChannelId
     },
     %% connect
     State1 = connect(State),
@@ -114,7 +117,10 @@ init(Args) ->
 handle_call(_, _From, #state{socket = undefined} = State) ->
     {reply, {error, no_socket}, State};
 
-handle_call({call, Message}, _From, #state{socket = Socket} = State) ->
+handle_call({call, Message}, _From, #state{
+    channel_id = ChannelId,
+    socket = Socket
+} = State) ->
     Data = term_to_binary({call, Message}),
     case gen_tcp:send(Socket, Data) of
         ok ->
@@ -124,7 +130,7 @@ handle_call({call, Message}, _From, #state{socket = Socket} = State) ->
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
                             %% close socket
-                            error_logger:warning_msg("Received invalid response data from OUT channel: ~p", [ReplyData]),
+                            error_logger:warning_msg("Received invalid response data from channel OUT '~s': ~p", [ChannelId, ReplyData]),
                             State1 = timeout(State),
                             {reply, {error, erlgate_invalid_response_data}, State1};
                         Reply ->
@@ -132,7 +138,7 @@ handle_call({call, Message}, _From, #state{socket = Socket} = State) ->
                     end
             end;
         {error, Reason} ->
-            error_logger:warning_msg("Error while sending to OUT channel the call ~p: ~p", [Data, Reason]),
+            error_logger:warning_msg("Error while sending to channel OUT '~s' the call ~p: ~p", [ChannelId, Data, Reason]),
             State1 = timeout(State),
             {reply, {error, Reason}, State1}
     end;
@@ -194,16 +200,17 @@ code_change(_OldVsn, State, _Extra) ->
 %% ===================================================================
 -spec connect(#state{}) -> #state{}.
 connect(#state{
+    channel_id = ChannelId,
     host = Host,
     port = Port
 } = State) ->
     case gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, 4}]) of
         {ok, Socket} ->
-            error_logger:info_msg("Connected to remote OUT channel ~p:~p", [Host, Port]),
+            error_logger:info_msg("Connected channel OUT '~s'", [ChannelId]),
             State#state{socket = Socket};
         {error, Reason} ->
-            error_logger:error_msg("Error connecting to remote OUT channel ~p:~p: ~p, will try reconnecting in ~p ms", [
-                Host, Port, Reason, ?RECONNECT_TIMEOUT_MS
+            error_logger:error_msg("Error connecting channel OUT '~s': ~p, will try reconnecting in ~p ms", [
+                ChannelId, Reason, ?RECONNECT_TIMEOUT_MS
             ]),
             State1 = State#state{socket = undefined},
             timeout(State1)

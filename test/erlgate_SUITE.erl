@@ -153,5 +153,9 @@ end_to_end(Config) ->
     ok = rpc:call(SlaveNode, erlgate, start, []),
     %% wait for connection
     timer:sleep(1100),
-    %% send a message and get response back
-    {received, <<"my test message">>} = erlgate:call(cluster_2, <<"my test message">>).
+    %% send a message from local to remote and get response back
+    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
+    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>),
+    %% send a message from remote to local and get response back
+    {received, <<"my test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_3, <<"my test message from remote">>]),
+    {received_from_2, <<"my other test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_4, <<"my other test message from remote">>]).

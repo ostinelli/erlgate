@@ -23,46 +23,13 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
--module(erlgate_ranch).
+-module(erlgate_test_dispatcher_2).
+-behaviour(erlgate_dispatcher).
 
 %% API
--export([start_listener/0]).
+-export([handle_call/1]).
 
-%% macros
--define(DEFAULT_ACCEPTOR_NUM, 10).
-
-%% specs
--type channel_in_spec() :: {ListenerPort :: non_neg_integer(), DispatcherModule :: atom()}.
-
-
-%% ===================================================================
-%% API
-%% ===================================================================
--spec start_listener() -> ok.
-start_listener() ->
-    %% get options
-    case erlgate_utils:get_env_value(channels_in) of
-        {ok, ChannelsInSpec} ->
-            start_channels_in(ChannelsInSpec);
-        undefined ->
-            error_logger:info_msg("Starting erlgate without channels in (none specified)")
-    end.
-
-
-%% ===================================================================
-%% Internal
-%% ===================================================================
--spec start_channels_in([channel_in_spec()]) -> ok.
-start_channels_in([]) -> ok;
-start_channels_in([{ListenerPort, DispatcherModule} | T]) ->
-    Acceptors = ?DEFAULT_ACCEPTOR_NUM,
-    error_logger:info_msg("Starting ~p erlgate acceptors on port ~p", [Acceptors, ListenerPort]),
-    %% start ranch
-    Ref = list_to_atom(lists:concat(["erlgate_in_", integer_to_list(ListenerPort)])),
-    {ok, _} = ranch:start_listener(Ref, Acceptors, ranch_tcp,
-        [{port, ListenerPort}],
-        erlgate_in,
-        [{dispatcher_module, DispatcherModule}]
-    ),
-    %% loop
-    start_channels_in(T).
+%% TODO: should we use {reply, Message} formats?
+-spec handle_call(Message :: any) -> ok | {error, Reason :: any()}.
+handle_call(Message) ->
+    {received_from_2, Message}.

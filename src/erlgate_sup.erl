@@ -32,6 +32,14 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+%% specs
+-type channel_out_spec() :: {
+    Ref :: atom(),
+    Host :: string(),
+    Port :: non_neg_integer(),
+    ConnectionNum :: non_neg_integer()
+}.
+
 
 %% ===================================================================
 %% API
@@ -48,9 +56,9 @@ start_link() ->
     {ok, {{supervisor:strategy(), non_neg_integer(), pos_integer()}, [supervisor:child_spec()]}}.
 init([]) ->
     %% get databases
-    Children = case erlgate_utils:get_env_value(remote_clusters) of
-        {ok, RemoteClusters} ->
-            children_spec(RemoteClusters);
+    Children = case erlgate_utils:get_env_value(channels_out) of
+        {ok, ChannelsOutSpecs} ->
+            children_spec(ChannelsOutSpecs);
         _ ->
             []
     end,
@@ -61,30 +69,32 @@ init([]) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
--spec children_spec(RemoteClusters :: list()) -> [supervisor:child_spec()].
-children_spec(RemoteClusters) ->
-    children_spec(RemoteClusters, []).
+-spec children_spec(ChannelsOutSpecs :: [channel_out_spec()]) -> [supervisor:child_spec()].
+children_spec(ChannelsOutSpecs) ->
+    children_spec(ChannelsOutSpecs, []).
 
--spec children_spec(RemoteClusters :: list(), Specs :: [supervisor:child_spec()]) -> [supervisor:child_spec()].
-children_spec([], Specs) ->
-    Specs;
-children_spec([{RemoteCluster, RemoteServers} | T], Specs) ->
-    F = fun({Host, Port, Size}, Acc) ->
-        %% prepare args
-        PoolArgs = [
-            {name, {local, RemoteCluster}},
-            {worker_module, erlgate_out},
-            {size, Size}
-        ],
-        ServerArgs = [
-            {host, Host},
-            {port, Port}
-        ],
-        %% generate spec
-        SpecName = "erlgate_" ++ atom_to_list(RemoteCluster) ++ "_" ++ Host ++ "_" ++ integer_to_list(Port),
-        ServerSpec = poolboy:child_spec(list_to_atom(SpecName), PoolArgs, ServerArgs),
-        %% acc
-        [ServerSpec | Acc]
-    end,
-    ClusterSpecs = lists:foldl(F, [], RemoteServers),
-    children_spec(T, Specs ++ ClusterSpecs).
+-spec children_spec(ChannelsOutSpecs :: [channel_out_spec()], Specs :: [supervisor:child_spec()]) ->
+    [supervisor:child_spec()].
+children_spec([], Specs) -> Specs;
+children_spec([{Ref, Host, Port, ConnectionNum} | T], Specs) ->
+    %% generate id
+    ChannelId = atom_to_list(Ref) ++ "@" ++ Host ++ ":" ++ integer_to_list(Port),
+    %% prepare args
+    PoolArgs = [
+        {name, {local, Ref}},
+        {worker_module, erlgate_out},
+        {size, ConnectionNum}
+    ],
+    ServerArgs = [
+        {host, Host},
+        {port, Port},
+        {channel_id, ChannelId}
+    ],
+    %% generate spec
+    SpecName = "erlgate_" ++ ChannelId,
+    Spec = poolboy:child_spec(list_to_atom(SpecName), PoolArgs, ServerArgs),
+    %% loop
+    children_spec(T, [Spec | Specs]).
+
+
+%%    children_spec(T, Specs ++ ClusterSpecs).
