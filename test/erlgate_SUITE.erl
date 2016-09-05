@@ -128,8 +128,8 @@ init_per_group(one_way, Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
     %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), main),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, slave),
+    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
+    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
     ok = application:unset_env(erlgate, channels_in),
     ok = rpc:call(SlaveNode, application, unset_env, [erlgate, channels_out]),
     %% start
@@ -143,8 +143,8 @@ init_per_group(two_ways, Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
     %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), main),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, slave),
+    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
+    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
     %% start
     ok = erlgate:start(),
     ok = rpc:call(SlaveNode, erlgate, start, []),

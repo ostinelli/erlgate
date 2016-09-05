@@ -38,10 +38,15 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-set_environment_variables(Node, main) ->
-    i_set_environment_variables(Node, ?ERLGATE_TEST_CONFIG_FILENAME);
-set_environment_variables(Node, slave) ->
-    i_set_environment_variables(Node, ?ERLGATE_SLAVE_TEST_CONFIG_FILENAME).
+set_environment_variables(Node, ConfigFileName) ->
+    % read config file
+    ConfigFilePath = filename:join([filename:dirname(code:which(?MODULE)), ConfigFileName]),
+    {ok, [AppsConfig]} = file:consult(ConfigFilePath),
+    % loop to set variables
+    F = fun({AppName, AppConfig}) ->
+        set_environment_for_app(Node, AppName, AppConfig)
+    end,
+    lists:foreach(F, AppsConfig).
 
 start_slave(NodeShortName) ->
     CodePath = code:get_path(),
@@ -61,16 +66,6 @@ disconnect_node(Node) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
-i_set_environment_variables(Node, Filename) ->
-    % read config file
-    ConfigFilePath = filename:join([filename:dirname(code:which(?MODULE)), Filename]),
-    {ok, [AppsConfig]} = file:consult(ConfigFilePath),
-    % loop to set variables
-    F = fun({AppName, AppConfig}) ->
-        set_environment_for_app(Node, AppName, AppConfig)
-    end,
-    lists:foreach(F, AppsConfig).
-
 set_environment_for_app(Node, AppName, AppConfig) ->
     F = fun({Key, Val}) ->
         ok = rpc:call(Node, application, set_env, [AppName, Key, Val])
