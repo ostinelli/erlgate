@@ -23,7 +23,7 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
--module(erlgate_ranch).
+-module(erlgate_in_ranch).
 
 %% API
 -export([start_listener/0]).
@@ -32,12 +32,8 @@
 %% macros
 -define(DEFAULT_ACCEPTOR_NUM, 10).
 
-%% specs
--type channel_in_spec() :: {
-    ListenerPort :: non_neg_integer(),
-    DispatcherModule :: atom(),
-    DispatcherOptions :: any()
-}.
+%% include
+-include("erlgate.hrl").
 
 
 %% ===================================================================
@@ -68,28 +64,33 @@ stop_listener() ->
 %% ===================================================================
 -spec start_channels_in([channel_in_spec()]) -> ok.
 start_channels_in([]) -> ok;
-start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions} | T]) ->
+start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, _TransportSpec} | T]) ->
     Acceptors = ?DEFAULT_ACCEPTOR_NUM,
     error_logger:info_msg("Starting ~p erlgate acceptors on port ~p", [Acceptors, ListenerPort]),
     %% start ranch
     Ref = ref(ListenerPort),
     {ok, _} = ranch:start_listener(Ref, Acceptors, ranch_tcp,
-        [{port, ListenerPort}],
+        [
+            {port, ListenerPort}
+        ],
         erlgate_in,
-        [{dispatcher_module, DispatcherModule}, {dispatcher_options, DispatcherOptions}]
+        [
+            {dispatcher_module, DispatcherModule},
+            {dispatcher_options, DispatcherOptions}
+        ]
     ),
     %% loop
     start_channels_in(T).
 
 -spec stop_channels_in([channel_in_spec()]) -> ok.
 stop_channels_in([]) -> ok;
-stop_channels_in([{ListenerPort, _DispatcherModule, _DispatcherOptions} | T]) ->
+stop_channels_in([{ListenerPort, _, _, _} | T]) ->
     error_logger:info_msg("Stopping erlgate acceptors on port ~p", [ListenerPort]),
     Ref = ref(ListenerPort),
     ranch:stop_listener(Ref),
     %% loop
     stop_channels_in(T).
-    
+
 -spec ref(ListenerPort :: non_neg_integer()) -> atom().
 ref(ListenerPort) ->
     list_to_atom(lists:concat(["erlgate_in_", integer_to_list(ListenerPort)])).

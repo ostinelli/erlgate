@@ -94,6 +94,7 @@ init(Args) ->
     Host = proplists:get_value(host, Args),
     Port = proplists:get_value(port, Args),
     ChannelId = proplists:get_value(channel_id, Args),
+    _TransportSpec = proplists:get_value(transport_spec, Args),
     %% build state
     State = #state{
         host = Host,

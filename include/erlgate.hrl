@@ -23,26 +23,27 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
--module(erlgate_app).
--behaviour(application).
+%% specs
 
-%% API
--export([start/2, stop/1]).
+-type transport_spec() :: tcp | {ssl, [ssl:ssl_option()]}.
 
+-type channel_out_spec() :: {
+    Ref :: atom(),
+    Host :: string(),
+    Port :: non_neg_integer(),
+    ConnectionNum :: non_neg_integer(),
+    TransportSpec :: transport_spec()
+}.
 
-%% ===================================================================
-%% API
-%% ===================================================================
--spec start(
-    StartType :: normal | {takeover, node()} | {failover, node()},
-    StartArgs :: any()
-) -> {ok, pid()} | {ok, pid(), State :: any()} | {error, any()}.
-start(_StartType, _StartArgs) ->
-    %% start listeners
-    erlgate_in_ranch:start_listener(),
-    %% start sups
-    erlgate_out_sup:start_link().
+-type channel_in_spec() :: {
+    ListenerPort :: non_neg_integer(),
+    DispatcherModule :: atom(),
+    DispatcherOptions :: any(),
+    TransportSpec :: transport_spec()
+}.
 
--spec stop(State :: any()) -> ok.
-stop(_State) ->
-    ok = erlgate_in_ranch:stop_listener().
+-export_type([
+    transport_spec/0,
+    channel_out_spec/0,
+    channel_in_spec/0
+]).

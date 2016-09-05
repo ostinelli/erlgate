@@ -3,6 +3,8 @@
         {description, "An alternative transport for Erlang messages across nodes."},
         {vsn, "0.1.0"},
         {registered, [
+            erlgate_out,
+            erlgate_out_sup
         ]},
         {applications, [
             kernel,

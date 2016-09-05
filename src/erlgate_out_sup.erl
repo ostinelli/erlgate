@@ -23,22 +23,17 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
--module(erlgate_sup).
+-module(erlgate_out_sup).
 -behaviour(supervisor).
 
 %% API
 -export([start_link/0]).
 
-%% Supervisor callbacks
+%% supervisor callbacks
 -export([init/1]).
 
-%% specs
--type channel_out_spec() :: {
-    Ref :: atom(),
-    Host :: string(),
-    Port :: non_neg_integer(),
-    ConnectionNum :: non_neg_integer()
-}.
+%% include
+-include("erlgate.hrl").
 
 
 %% ===================================================================
@@ -76,7 +71,7 @@ children_spec(ChannelsOutSpecs) ->
 -spec children_spec(ChannelsOutSpecs :: [channel_out_spec()], Specs :: [supervisor:child_spec()]) ->
     [supervisor:child_spec()].
 children_spec([], Specs) -> Specs;
-children_spec([{Ref, Host, Port, ConnectionNum} | T], Specs) ->
+children_spec([{Ref, Host, Port, ConnectionNum, TransportSpec} | T], Specs) ->
     %% generate id
     ChannelId = atom_to_list(Ref) ++ "@" ++ Host ++ ":" ++ integer_to_list(Port),
     %% prepare args
@@ -88,6 +83,7 @@ children_spec([{Ref, Host, Port, ConnectionNum} | T], Specs) ->
     ServerArgs = [
         {host, Host},
         {port, Port},
+        {transport_spec, TransportSpec},
         {channel_id, ChannelId}
     ],
     %% generate spec
