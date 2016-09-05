@@ -55,18 +55,18 @@
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
--spec call(Channel :: atom(), Message :: any()) -> ok.
-call(Channel, Message) ->
-    call(Channel, Message, ?DEFAULT_RESPONSE_TIMEOUT).
+-spec call(ChannelRef :: atom(), Message :: any()) -> ok.
+call(ChannelRef, Message) ->
+    call(ChannelRef, Message, ?DEFAULT_RESPONSE_TIMEOUT).
 
--spec call(Channel :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
-call(Channel, Message, Timeout) ->
-    poolboy:transaction(Channel, fun(Worker) ->
+-spec call(ChannelRef :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
+call(ChannelRef, Message, Timeout) ->
+    poolboy:transaction(ChannelRef, fun(Worker) ->
         case gen_server:call(Worker, {call, Message, Timeout}) of
             {ok, Reply} ->
                 Reply;
             {error, Reason} ->
-                exit({Reason, {original_call, {Channel, Message}}})
+                exit({Reason, {original_call, {ChannelRef, Message}}})
         end
     end).
 

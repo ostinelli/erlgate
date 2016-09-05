@@ -46,13 +46,14 @@ start() ->
 stop() ->
     ok = application:stop(erlgate).
 
--spec call(Cluster :: atom(), Message :: any()) -> ok.
-call(Cluster, Message) ->
-    erlgate_out:call(Cluster, Message).
+-spec call(ChannelRef :: atom(), Message :: any()) -> ok.
+call(ChannelRef, Message) ->
+    erlgate_out:call(ChannelRef, Message).
 
--spec call(Cluster :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
-call(Cluster, Message, Timeout) ->
-    erlgate_out:call(Cluster, Message, Timeout).
+-spec call(ChannelRef :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
+call(ChannelRef, Message, Timeout) ->
+    erlgate_out:call(ChannelRef, Message, Timeout).
+
 
 %% ===================================================================
 %% Private
