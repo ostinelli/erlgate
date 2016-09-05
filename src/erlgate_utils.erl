@@ -27,6 +27,7 @@
 
 %% API
 -export([get_env_value/1, get_env_value/2]).
+-export([clean_options/2]).
 
 
 %% ===================================================================
@@ -42,4 +43,21 @@ get_env_value(Key, Default) ->
     case application:get_env(Key) of
         undefined -> {ok, Default};
         {ok, Val} -> {ok, Val}
+    end.
+
+-spec clean_options(Options :: [proplists:property()], [atom()]) -> [proplists:property()].
+clean_options(Options, []) -> Options;
+clean_options(Options, [Key | T]) ->
+    case lists:member(Key, Options) of
+        true ->
+            Options1 = lists:delete(Key, Options),
+            clean_options(Options1, T);
+        false ->
+            case lists:keymember(Key, 1, Options) of
+                true ->
+                    Options1 = lists:keydelete(Key, 1, Options),
+                    clean_options(Options1, T);
+                false ->
+                    clean_options(Options, T)
+            end
     end.

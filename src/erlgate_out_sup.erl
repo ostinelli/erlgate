@@ -87,7 +87,7 @@ children_spec([{Ref, Host, Port, ConnectionNum, TransportSpec} | T], Specs) ->
         {channel_id, ChannelId}
     ],
     %% generate spec
-    SpecName = "erlgate_" ++ ChannelId,
+    SpecName = "erlgate_out_" ++ ChannelId,
     Spec = poolboy:child_spec(list_to_atom(SpecName), PoolArgs, ServerArgs),
     %% loop
     children_spec(T, [Spec | Specs]).

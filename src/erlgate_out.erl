@@ -35,18 +35,23 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+%% macros
+-define(DEFAULT_RECONNECT_TIMEOUT_MS, 1000).
+-define(DEFAULT_RESPONSE_TIMEOUT, 30000).
+
+%% include
+-include("erlgate.hrl").
+
 %% records
 -record(state, {
     host = "" :: string(),
     port = 0 :: non_neg_integer(),
     channel_id = "" :: string(),
     socket = undefined :: undefined | any(),
-    timer_ref = undefined :: undefined | reference()
+    timer_ref = undefined :: undefined | reference(),
+    transport = gen_tcp :: gen_tcp | ssl,
+    transport_options = [] :: [ssl:ssl_option()]
 }).
-
-%% macros
--define(DEFAULT_RECONNECT_TIMEOUT_MS, 1000).
--define(DEFAULT_RESPONSE_TIMEOUT, 30000).
 
 
 %% ===================================================================
@@ -94,12 +99,17 @@ init(Args) ->
     Host = proplists:get_value(host, Args),
     Port = proplists:get_value(port, Args),
     ChannelId = proplists:get_value(channel_id, Args),
-    _TransportSpec = proplists:get_value(transport_spec, Args),
+    {Transport, TransportOptions} = case proplists:get_value(transport_spec, Args) of
+        tcp -> {gen_tcp, []};
+        {ssl, SslOptions} -> {ssl, SslOptions}
+    end,
     %% build state
     State = #state{
         host = Host,
         port = Port,
-        channel_id = ChannelId
+        channel_id = ChannelId,
+        transport = Transport,
+        transport_options = TransportOptions
     },
     %% connect
     State1 = connect(State),
@@ -117,18 +127,22 @@ init(Args) ->
     {stop, Reason :: any(), Reply :: any(), #state{}} |
     {stop, Reason :: any(), #state{}}.
 
-handle_call(_, _From, #state{socket = undefined} = State) ->
-    {reply, {error, no_socket}, State};
+handle_call(_, _From, #state{
+    channel_id = ChannelId,
+    socket = undefined
+} = State) ->
+    {reply, {error, {no_channel_out_socket, {channel_id, ChannelId}}}, State};
 
 handle_call({call, Message, Timeout}, _From, #state{
     channel_id = ChannelId,
+    transport = Transport,
     socket = Socket
 } = State) ->
     Data = term_to_binary({call, Message}),
-    case gen_tcp:send(Socket, Data) of
+    case Transport:send(Socket, Data) of
         ok ->
             %% receive reply
-            case gen_tcp:recv(Socket, 0, Timeout) of
+            case Transport:recv(Socket, 0, Timeout) of
                 {ok, ReplyData} ->
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
@@ -164,10 +178,11 @@ handle_cast(_, #state{socket = undefined} = State) ->
 
 handle_cast({cast, Message}, #state{
     channel_id = ChannelId,
+    transport = Transport,
     socket = Socket
 } = State) ->
     Data = term_to_binary({cast, Message}),
-    case gen_tcp:send(Socket, Data) of
+    case Transport:send(Socket, Data) of
         ok ->
             {noreply, State};
         {error, Reason} ->
@@ -199,12 +214,8 @@ handle_info(Info, State) ->
 %% Terminate
 %% ----------------------------------------------------------------------------------------------------------
 -spec terminate(Reason :: any(), #state{}) -> terminated.
-terminate(_Reason, #state{socket = Socket}) ->
-    %% terminate
-    case Socket of
-        undefined -> ok;
-        _ -> ok = gen_tcp:close(Socket)
-    end,
+terminate(_Reason, State) ->
+    disconnect(State),
     terminated.
 
 %% ----------------------------------------------------------------------------------------------------------
@@ -222,12 +233,16 @@ code_change(_OldVsn, State, _Extra) ->
 connect(#state{
     channel_id = ChannelId,
     host = Host,
-    port = Port
+    port = Port,
+    transport = Transport,
+    transport_options = TransportOptions
 } = State) ->
     %% disconnect if necessary
     State1 = disconnect(State),
+    %% build options
+    Options = erlgate_utils:clean_options(TransportOptions, [binary, active, packet]) ++ [binary, {active, false}, {packet, 4}],
     %% connect
-    case gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, 4}]) of
+    case Transport:connect(Host, Port, Options) of
         {ok, Socket} ->
             error_logger:info_msg("Connected channel OUT '~s'", [ChannelId]),
             State1#state{socket = Socket};
@@ -245,9 +260,10 @@ disconnect(#state{
     State;
 disconnect(#state{
     channel_id = ChannelId,
+    transport = Transport,
     socket = Socket
 } = State) ->
-    catch gen_tcp:close(Socket),
+    Transport:close(Socket),
     error_logger:info_msg("Disconnected channel OUT '~s'", [ChannelId]),
     State#state{socket = undefined}.
 

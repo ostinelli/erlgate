@@ -23,7 +23,7 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
--module(erlgate_SUITE).
+-module(erlgate_ssl_SUITE).
 
 %% callbacks
 -export([all/0]).
@@ -34,10 +34,6 @@
 %% tests
 -export([
     call_one_way/1,
-    call_one_way_with_options/1,
-    call_one_way_with_timeout/1,
-    call_one_way_with_error/1,
-    call_both_ways/1,
     cast_one_way/1
 ]).
 
@@ -58,8 +54,7 @@
 %% -------------------------------------------------------------------
 all() ->
     [
-        {group, one_way},
-        {group, two_ways}
+        {group, one_way}
     ].
 
 %% -------------------------------------------------------------------
@@ -78,13 +73,7 @@ groups() ->
     [
         {one_way, [shuffle], [
             call_one_way,
-            call_one_way_with_options,
-            call_one_way_with_timeout,
-            call_one_way_with_error,
             cast_one_way
-        ]},
-        {two_ways, [shuffle], [
-            call_both_ways
         ]}
     ].
 %% -------------------------------------------------------------------
@@ -124,27 +113,12 @@ end_per_suite(Config) ->
 %% Config0 = Config1 = [tuple()]
 %% Reason = term()
 %% -------------------------------------------------------------------
-init_per_group(one_way, Config) ->
+init_per_group(_GroupName, Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
     %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
-    ok = application:unset_env(erlgate, channels_in),
-    ok = rpc:call(SlaveNode, application, unset_env, [erlgate, channels_out]),
-    %% start
-    ok = erlgate:start(),
-    ok = rpc:call(SlaveNode, erlgate, start, []),
-    %% wait for connection
-    timer:sleep(1500),
-    %% return
-    Config;
-init_per_group(two_ways, Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
+    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-ssl.config"),
+    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-ssl-slave.config"),
     %% start
     ok = erlgate:start(),
     ok = rpc:call(SlaveNode, erlgate, start, []),
@@ -165,7 +139,7 @@ end_per_group(_GroupName, Config) ->
     %% stop
     ok = erlgate:stop(),
     ok = rpc:call(SlaveNode, erlgate, stop, []).
-    
+
 % ----------------------------------------------------------------------------------------------------------
 % Function: init_per_testcase(TestCase, Config0) ->
 %				Config1 | {skip,Reason} | {skip_and_save,Reason,Config1}
@@ -187,49 +161,22 @@ end_per_testcase(_TestCase, _Config) -> ok.
 %% ===================================================================
 %% Tests
 %% ===================================================================
-call_one_way(_Config) ->
-    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
-    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>).
+call_one_way(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% get response
+    {received, <<"my test message">>} = rpc:call(SlaveNode, erlgate, call, [node_ssl, <<"my test message">>]).
 
-call_one_way_with_options(_Config) ->
-    {called_with_options, <<"my test message">>} = erlgate:call(node_with_option, <<"my test message">>).
-
-call_one_way_with_timeout(_Config) ->
-    Result = (catch erlgate:call(node_1, <<"my test message">>, 100)),
-    {'EXIT', {timeout, {original_call, {node_1, <<"my test message">>}}}} = Result,
-    %% wait for gen_server up
-    timer:sleep(500).
-
-call_one_way_with_error(_Config) ->
-    Result = (catch erlgate:call(node_error, <<"my test message">>)),
-    {'EXIT', {closed, {original_call, {node_error, <<"my test message">>}}}} = Result,
-    %% wait for gen_server up
-    timer:sleep(500).
-
-cast_one_way(_Config) ->
+cast_one_way(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
     %% register local
     ResultPid = self(),
     global:register_name(erlgate_SUITE_result, ResultPid),
-    %% cast from local to remote
-    erlgate:cast(node_1, <<"my test message">>),
+    %% cast from remote to local
+    rpc:call(SlaveNode, erlgate, cast, [node_ssl, <<"my test message">>]),
     receive
         {received, <<"my test message">>} -> ok
     after 2000 ->
         ok = did_not_receive_cast_message_from_node_1
-    end,
-    erlgate:cast(node_2, <<"my other test message">>),
-    receive
-        {received_from_2, <<"my other test message">>} -> ok
-    after 2000 ->
-        ok = did_not_receive_cast_message_from_node_2
     end.
-
-call_both_ways(Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% call from local to remote and get response back
-    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
-    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>),
-    %% call from remote to local and get response back
-    {received, <<"my test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_3, <<"my test message from remote">>]),
-    {received_from_2, <<"my other test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_4, <<"my other test message from remote">>]).
