@@ -27,6 +27,7 @@
 
 %% API
 -export([start_listener/0]).
+-export([stop_listener/0]).
 
 %% macros
 -define(DEFAULT_ACCEPTOR_NUM, 10).
@@ -52,6 +53,15 @@ start_listener() ->
             error_logger:info_msg("Starting erlgate without channels in (none specified)")
     end.
 
+-spec stop_listener() -> ok.
+stop_listener() ->
+    %% get options
+    case erlgate_utils:get_env_value(channels_in) of
+        {ok, ChannelsInSpec} ->
+            stop_channels_in(ChannelsInSpec);
+        undefined ->
+            ok
+    end.
 
 %% ===================================================================
 %% Internal
@@ -62,7 +72,7 @@ start_channels_in([{ListenerPort, DispatcherModule, Options} | T]) ->
     Acceptors = ?DEFAULT_ACCEPTOR_NUM,
     error_logger:info_msg("Starting ~p erlgate acceptors on port ~p", [Acceptors, ListenerPort]),
     %% start ranch
-    Ref = list_to_atom(lists:concat(["erlgate_in_", integer_to_list(ListenerPort)])),
+    Ref = ref(ListenerPort),
     {ok, _} = ranch:start_listener(Ref, Acceptors, ranch_tcp,
         [{port, ListenerPort}],
         erlgate_in,
@@ -70,3 +80,16 @@ start_channels_in([{ListenerPort, DispatcherModule, Options} | T]) ->
     ),
     %% loop
     start_channels_in(T).
+
+-spec stop_channels_in([channel_in_spec()]) -> ok.
+stop_channels_in([]) -> ok;
+stop_channels_in([{ListenerPort, _DispatcherModule, _Options} | T]) ->
+    error_logger:info_msg("Stopping erlgate acceptors on port ~p", [ListenerPort]),
+    Ref = ref(ListenerPort),
+    ranch:stop_listener(Ref),
+    %% loop
+    stop_channels_in(T).
+    
+-spec ref(ListenerPort :: non_neg_integer()) -> atom().
+ref(ListenerPort) ->
+    list_to_atom(lists:concat(["erlgate_in_", integer_to_list(ListenerPort)])).
