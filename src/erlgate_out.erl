@@ -30,6 +30,7 @@
 %% API
 -export([start_link/1]).
 -export([call/2, call/3]).
+-export([cast/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -55,11 +56,11 @@
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
--spec call(ChannelRef :: atom(), Message :: any()) -> ok.
+-spec call(ChannelRef :: atom(), Message :: any()) -> Reply :: any().
 call(ChannelRef, Message) ->
     call(ChannelRef, Message, ?DEFAULT_RESPONSE_TIMEOUT).
 
--spec call(ChannelRef :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> ok.
+-spec call(ChannelRef :: atom(), Message :: any(), Timeout :: non_neg_integer() | infinity) -> Reply :: any().
 call(ChannelRef, Message, Timeout) ->
     poolboy:transaction(ChannelRef, fun(Worker) ->
         case gen_server:call(Worker, {call, Message, Timeout}) of
@@ -68,6 +69,12 @@ call(ChannelRef, Message, Timeout) ->
             {error, Reason} ->
                 exit({Reason, {original_call, {ChannelRef, Message}}})
         end
+    end).
+
+-spec cast(ChannelRef :: atom(), Message :: any()) -> ok.
+cast(ChannelRef, Message) ->
+    poolboy:transaction(ChannelRef, fun(Worker) ->
+        gen_server:cast(Worker, {cast, Message})
     end).
 
 %% ===================================================================
@@ -150,6 +157,22 @@ handle_call(Request, From, State) ->
     {noreply, #state{}} |
     {noreply, #state{}, Timeout :: non_neg_integer()} |
     {stop, Reason :: any(), #state{}}.
+
+handle_cast(_, #state{socket = undefined} = State) ->
+    {noreply, State};
+
+handle_cast({cast, Message}, #state{
+    channel_id = ChannelId,
+    socket = Socket
+} = State) ->
+    Data = term_to_binary({cast, Message}),
+    case gen_tcp:send(Socket, Data) of
+        ok ->
+            {noreply, State};
+        {error, Reason} ->
+            error_logger:error_msg("Error while sending to channel OUT '~s' the cast ~p: ~p", [ChannelId, Message, Reason]),
+            {stop, Reason, State}
+    end;
 
 handle_cast(Msg, State) ->
     error_logger:warning_msg("Received an unknown cast message: ~p", [Msg]),

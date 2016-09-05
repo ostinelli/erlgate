@@ -26,3 +26,4 @@
 -module(erlgate_dispatcher).
 
 -callback handle_call(Message :: any(), Options :: any()) -> Reply :: any().
+-callback handle_cast(Message :: any(), Options :: any()) -> any().

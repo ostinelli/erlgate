@@ -28,6 +28,7 @@
 %% API
 -export([start/0, stop/0]).
 -export([call/2, call/3]).
+-export([cast/2]).
 
 %% ===================================================================
 %% API
@@ -54,6 +55,9 @@ call(ChannelRef, Message) ->
 call(ChannelRef, Message, Timeout) ->
     erlgate_out:call(ChannelRef, Message, Timeout).
 
+-spec cast(ChannelRef :: atom(), Message :: any()) -> ok.
+cast(ChannelRef, Message) ->
+    erlgate_out:cast(ChannelRef, Message).
 
 %% ===================================================================
 %% Private

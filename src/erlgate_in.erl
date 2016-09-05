@@ -124,6 +124,20 @@ process_message({call, Message}, #state{
         ])
     end,
     send_reply(Reply, State),
+    recv_loop(State);
+process_message({cast, Message}, #state{
+    dispatcher_module = DispatcherModule,
+    options = Options
+} = State) ->
+    try DispatcherModule:handle_cast(Message, Options) of
+        _ -> ok
+    catch Class:Reason ->
+        Stacktrace = erlang:get_stacktrace(),
+        erlang:Class([
+            {reason, Reason},
+            {stacktrace, Stacktrace}
+        ])
+    end,
     recv_loop(State).
 
 send_reply(Reply, #state{

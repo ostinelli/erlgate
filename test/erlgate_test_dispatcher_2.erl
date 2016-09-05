@@ -26,10 +26,14 @@
 -module(erlgate_test_dispatcher_2).
 -behaviour(erlgate_dispatcher).
 
-%% API
+%% Callbacks
 -export([handle_call/2]).
+-export([handle_cast/2]).
 
 %% TODO: should we use {reply, Message} formats?
--spec handle_call(Message :: any, Options :: any()) -> ok | {error, Reason :: any()}.
+-spec handle_call(Message :: any, Options :: any()) -> any().
 handle_call(Message, _Options) ->
     {received_from_2, Message}.
+
+handle_cast(Message, _Options) ->
+    global:send(erlgate_SUITE_result, {received_from_2, Message}).
