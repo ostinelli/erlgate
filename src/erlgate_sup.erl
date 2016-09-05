@@ -95,6 +95,3 @@ children_spec([{Ref, Host, Port, ConnectionNum} | T], Specs) ->
     Spec = poolboy:child_spec(list_to_atom(SpecName), PoolArgs, ServerArgs),
     %% loop
     children_spec(T, [Spec | Specs]).
-
-
-%%    children_spec(T, Specs ++ ClusterSpecs).
