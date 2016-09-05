@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/ostinelli/erlgate.svg?branch=master)](https://travis-ci.org/ostinelli/erlgate)
+
 # ErlGate
 
 ErlGate is an alternative transport for Erlang messages across nodes, which uses parallel TCP connection pipes to send data.
