@@ -36,7 +36,7 @@
 -type channel_in_spec() :: {
     ListenerPort :: non_neg_integer(),
     DispatcherModule :: atom(),
-    Options :: any()
+    DispatcherOptions :: any()
 }.
 
 
@@ -68,7 +68,7 @@ stop_listener() ->
 %% ===================================================================
 -spec start_channels_in([channel_in_spec()]) -> ok.
 start_channels_in([]) -> ok;
-start_channels_in([{ListenerPort, DispatcherModule, Options} | T]) ->
+start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions} | T]) ->
     Acceptors = ?DEFAULT_ACCEPTOR_NUM,
     error_logger:info_msg("Starting ~p erlgate acceptors on port ~p", [Acceptors, ListenerPort]),
     %% start ranch
@@ -76,14 +76,14 @@ start_channels_in([{ListenerPort, DispatcherModule, Options} | T]) ->
     {ok, _} = ranch:start_listener(Ref, Acceptors, ranch_tcp,
         [{port, ListenerPort}],
         erlgate_in,
-        [{dispatcher_module, DispatcherModule}, {options, Options}]
+        [{dispatcher_module, DispatcherModule}, {dispatcher_options, DispatcherOptions}]
     ),
     %% loop
     start_channels_in(T).
 
 -spec stop_channels_in([channel_in_spec()]) -> ok.
 stop_channels_in([]) -> ok;
-stop_channels_in([{ListenerPort, _DispatcherModule, _Options} | T]) ->
+stop_channels_in([{ListenerPort, _DispatcherModule, _DispatcherOptions} | T]) ->
     error_logger:info_msg("Stopping erlgate acceptors on port ~p", [ListenerPort]),
     Ref = ref(ListenerPort),
     ranch:stop_listener(Ref),
