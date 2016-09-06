@@ -110,12 +110,21 @@ parse_request(Data, #state{
     end.
 
 -spec process_message(Message :: any(), #state{}) -> ok.
-process_message({call, Message}, #state{
+process_message({call, Message}, State) ->
+    Reply = call_dispatcher(handle_call, Message, State),
+    send_reply(Reply, State),
+    recv_loop(State);
+process_message({cast, Message}, State) ->
+    call_dispatcher(handle_cast, Message, State),
+    recv_loop(State).
+
+-spec call_dispatcher(Method :: atom(), Message :: any(), #state{}) -> Reply :: any().
+call_dispatcher(Method, Message, #state{
     channel_id = ChannelId,
     dispatcher_module = DispatcherModule,
     dispatcher_options = DispatcherOptions
-} = State) ->
-    Reply = try DispatcherModule:handle_call(Message, DispatcherOptions) of
+}) ->
+    Reply = try DispatcherModule:Method(Message, DispatcherOptions) of
         Reply0 -> Reply0
     catch Class:Reason ->
         Stacktrace = erlang:get_stacktrace(),
@@ -126,25 +135,7 @@ process_message({call, Message}, #state{
             {stacktrace, Stacktrace}
         ])
     end,
-    send_reply(Reply, State),
-    recv_loop(State);
-process_message({cast, Message}, #state{
-    channel_id = ChannelId,
-    dispatcher_module = DispatcherModule,
-    dispatcher_options = DispatcherOptions
-} = State) ->
-    try DispatcherModule:handle_cast(Message, DispatcherOptions) of
-        _ -> ok
-    catch Class:Reason ->
-        Stacktrace = erlang:get_stacktrace(),
-        erlang:Class([
-            {reason, Reason},
-            {channel_id, ChannelId},
-            {original_call, Message},
-            {stacktrace, Stacktrace}
-        ])
-    end,
-    recv_loop(State).
+    Reply.
 
 send_reply(Reply, #state{
     socket = Socket,

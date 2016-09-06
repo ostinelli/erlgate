@@ -66,36 +66,37 @@ stop_listener() ->
 start_channels_in([]) -> ok;
 start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, tcp} | T]) ->
     error_logger:info_msg("Starting ~p erlgate TCP acceptors on port ~p", [?DEFAULT_ACCEPTOR_NUM, ListenerPort]),
-    %% start ranch
-    Ref = ref(ListenerPort),
-    {ok, _} = ranch:start_listener(Ref, ?DEFAULT_ACCEPTOR_NUM, ranch_tcp,
-        [
-            {port, ListenerPort}
-        ],
-        erlgate_in,
-        [
-            {dispatcher_module, DispatcherModule},
-            {dispatcher_options, DispatcherOptions}
-        ]
-    ),
+    %% start channel
+    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_tcp, []),
     %% loop
     start_channels_in(T);
 start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, {ssl, SslOptions}} | T]) ->
     error_logger:info_msg("Starting ~p erlgate SSL acceptors on port ~p", [?DEFAULT_ACCEPTOR_NUM, ListenerPort]),
+    %% start channel
+    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_ssl, SslOptions),
+    %% loop
+    start_channels_in(T).
+
+-spec start_channel_in(
+    ListenerPort :: non_neg_integer(),
+    DispatcherModule :: atom(),
+    DispatcherOptions :: [any()],
+    RanchProtocol :: ranch_tcp | ranch_ssl,
+    ProtoOptions :: [ssl:ssl_option()]
+) -> {ok, any()}.
+start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, RanchProtocol, ProtoOptions) ->
     %% start ranch
     Ref = ref(ListenerPort),
-    {ok, _} = ranch:start_listener(Ref, ?DEFAULT_ACCEPTOR_NUM, ranch_ssl,
+    {ok, _} = ranch:start_listener(Ref, ?DEFAULT_ACCEPTOR_NUM, RanchProtocol,
         [
             {port, ListenerPort}
-        ] ++ SslOptions,
+        ] ++ ProtoOptions,
         erlgate_in,
         [
             {dispatcher_module, DispatcherModule},
             {dispatcher_options, DispatcherOptions}
         ]
-    ),
-    %% loop
-    start_channels_in(T).
+    ).
 
 -spec stop_channels_in([channel_in_spec()]) -> ok.
 stop_channels_in([]) -> ok;
