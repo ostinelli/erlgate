@@ -111,6 +111,7 @@ parse_request(Data, #state{
 
 -spec process_message(Message :: any(), #state{}) -> ok.
 process_message({call, Message}, #state{
+    channel_id = ChannelId,
     dispatcher_module = DispatcherModule,
     dispatcher_options = DispatcherOptions
 } = State) ->
@@ -120,12 +121,15 @@ process_message({call, Message}, #state{
         Stacktrace = erlang:get_stacktrace(),
         erlang:Class([
             {reason, Reason},
+            {channel_id, ChannelId},
+            {original_call, Message},
             {stacktrace, Stacktrace}
         ])
     end,
     send_reply(Reply, State),
     recv_loop(State);
 process_message({cast, Message}, #state{
+    channel_id = ChannelId,
     dispatcher_module = DispatcherModule,
     dispatcher_options = DispatcherOptions
 } = State) ->
@@ -135,6 +139,8 @@ process_message({cast, Message}, #state{
         Stacktrace = erlang:get_stacktrace(),
         erlang:Class([
             {reason, Reason},
+            {channel_id, ChannelId},
+            {original_call, Message},
             {stacktrace, Stacktrace}
         ])
     end,
