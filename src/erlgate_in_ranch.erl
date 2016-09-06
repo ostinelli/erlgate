@@ -67,13 +67,13 @@ start_channels_in([]) -> ok;
 start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, tcp} | T]) ->
     error_logger:info_msg("Starting ~p erlgate TCP acceptors on port ~p", [?DEFAULT_ACCEPTOR_NUM, ListenerPort]),
     %% start channel
-    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_tcp, []),
+    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_tcp, tcp, []),
     %% loop
     start_channels_in(T);
 start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, {ssl, SslOptions}} | T]) ->
     error_logger:info_msg("Starting ~p erlgate SSL acceptors on port ~p", [?DEFAULT_ACCEPTOR_NUM, ListenerPort]),
     %% start channel
-    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_ssl, SslOptions),
+    start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, ranch_ssl, ssl, SslOptions),
     %% loop
     start_channels_in(T).
 
@@ -82,9 +82,10 @@ start_channels_in([{ListenerPort, DispatcherModule, DispatcherOptions, {ssl, Ssl
     DispatcherModule :: atom(),
     DispatcherOptions :: [any()],
     RanchProtocol :: ranch_tcp | ranch_ssl,
+    Protocol :: tcp | ssl,
     ProtoOptions :: [ssl:ssl_option()]
 ) -> {ok, any()}.
-start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, RanchProtocol, ProtoOptions) ->
+start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, RanchProtocol, Protocol, ProtoOptions) ->
     %% start ranch
     Ref = ref(ListenerPort),
     {ok, _} = ranch:start_listener(Ref, ?DEFAULT_ACCEPTOR_NUM, RanchProtocol,
@@ -93,6 +94,8 @@ start_channel_in(ListenerPort, DispatcherModule, DispatcherOptions, RanchProtoco
         ] ++ ProtoOptions,
         erlgate_in,
         [
+            {protocol, Protocol},
+            {listener_port, ListenerPort},
             {dispatcher_module, DispatcherModule},
             {dispatcher_options, DispatcherOptions}
         ]

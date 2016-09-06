@@ -147,17 +147,17 @@ handle_call({call, Message, Timeout}, _From, #state{
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
                             %% close socket
-                            error_logger:error_msg("Received invalid response data from channel OUT '~s': ~p", [ChannelId, ReplyData]),
+                            error_logger:error_msg("[OUT|~s] Received invalid response data: ~p", [ChannelId, ReplyData]),
                             {stop, erlgate_invalid_response_data, {error, erlgate_invalid_response_data}, State};
                         Reply ->
                             {reply, {ok, Reply}, State}
                     end;
                 {error, Reason} ->
-                    error_logger:error_msg("Error while waiting response from channel OUT '~s' to the call ~p: ~p", [ChannelId, Message, Reason]),
+                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: ~p", [ChannelId, Message, Reason]),
                     {stop, Reason, {error, Reason}, State}
             end;
         {error, Reason} ->
-            error_logger:error_msg("Error while sending to channel OUT '~s' the call ~p: ~p", [ChannelId, Message, Reason]),
+            error_logger:error_msg("[OUT|~s] Error while sending the call ~p: ~p", [ChannelId, Message, Reason]),
             {stop, Reason, {error, Reason}, State}
     end;
 
@@ -186,7 +186,7 @@ handle_cast({cast, Message}, #state{
         ok ->
             {noreply, State};
         {error, Reason} ->
-            error_logger:error_msg("Error while sending to channel OUT '~s' the cast ~p: ~p", [ChannelId, Message, Reason]),
+            error_logger:error_msg("[OUT|~s] Error while sending the cast ~p: ~p", [ChannelId, Message, Reason]),
             {stop, Reason, State}
     end;
 
@@ -244,10 +244,10 @@ connect(#state{
     %% connect
     case Transport:connect(Host, Port, Options) of
         {ok, Socket} ->
-            error_logger:info_msg("Connected channel OUT '~s'", [ChannelId]),
+            error_logger:info_msg("[OUT|~s] Connected", [ChannelId]),
             State1#state{socket = Socket};
         {error, Reason} ->
-            error_logger:error_msg("Error connecting channel OUT '~s': ~p, will try reconnecting in ~p ms", [
+            error_logger:error_msg("[OUT|~s] Error connecting: ~p, will try reconnecting in ~p ms", [
                 ChannelId, Reason, ?DEFAULT_RECONNECT_TIMEOUT_MS
             ]),
             timeout(State1)
@@ -264,7 +264,7 @@ disconnect(#state{
     socket = Socket
 } = State) ->
     Transport:close(Socket),
-    error_logger:info_msg("Disconnected channel OUT '~s'", [ChannelId]),
+    error_logger:info_msg("[OUT|~s] Disconnected", [ChannelId]),
     State#state{socket = undefined}.
 
 -spec timeout(#state{}) -> #state{}.

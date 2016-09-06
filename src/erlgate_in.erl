@@ -53,13 +53,15 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, Opts) ->
     %% ack
     ok = ranch:accept_ack(Ref),
-    %% build ref
-    {ok, {IpAddressTerm, Port}} = Transport:peername(Socket),
-    ChannelId = inet:ntoa(IpAddressTerm) ++ ":" ++ integer_to_list(Port),
-    error_logger:info_msg("Opening erlgate channel IN '~s'", [ChannelId]),
     %% get options
+    ListenerPort = proplists:get_value(listener_port, Opts),
+    Protocol = proplists:get_value(protocol, Opts),
     DispatcherModule = proplists:get_value(dispatcher_module, Opts),
     DispatcherOptions = proplists:get_value(dispatcher_options, Opts),
+    %% build ref
+    {ok, {IpAddressTerm, _Port}} = Transport:peername(Socket),
+    ChannelId = ":" ++ integer_to_list(ListenerPort) ++ "{" ++ atom_to_list(Protocol) ++ "}" ++ inet:ntoa(IpAddressTerm),
+    error_logger:info_msg("[IN|~s] Incoming erlgate channel connection", [ChannelId]),
     %% set options
     Transport:setopts(Socket, [binary, {packet, 4}]),
     %% get messages
@@ -91,9 +93,9 @@ recv_loop(#state{
         {OK, Socket, Data} ->
             parse_request(Data, State);
         {Closed, Socket} ->
-            error_logger:info_msg("Channel IN '~s' got closed", [ChannelId]);
+            error_logger:info_msg("[IN|~s] Got closed", [ChannelId]);
         {Error, Socket, Reason} ->
-            error_logger:warning_msg("Channel IN '~s' got error: ~p", [ChannelId, Reason])
+            error_logger:warning_msg("[IN|~s] Got error: ~p", [ChannelId, Reason])
     end.
 
 -spec parse_request(Data :: binary(), #state{}) -> ok.
@@ -103,7 +105,7 @@ parse_request(Data, #state{
     case catch binary_to_term(Data) of
         {'EXIT', {badarg, _}} ->
             %% close socket
-            error_logger:warning_msg("Received invalid request data from channel IN '~s': ~p", [ChannelId, Data]);
+            error_logger:warning_msg("[IN|~s] Received an invalid request data: ~p", [ChannelId, Data]);
         Message ->
             %% process message
             process_message(Message, State)

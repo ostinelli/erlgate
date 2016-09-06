@@ -73,7 +73,11 @@ children_spec(ChannelsOutSpecs) ->
 children_spec([], Specs) -> Specs;
 children_spec([{Ref, Host, Port, ConnectionNum, TransportSpec} | T], Specs) ->
     %% generate id
-    ChannelId = atom_to_list(Ref) ++ "@" ++ Host ++ ":" ++ integer_to_list(Port),
+    Protocol = case TransportSpec of
+        tcp -> tcp;
+        {ssl, _} -> ssl
+    end,
+    ChannelId = atom_to_list(Ref) ++ "@{" ++ atom_to_list(Protocol) ++ "}" ++ Host ++ ":" ++ integer_to_list(Port),
     %% prepare args
     PoolArgs = [
         {name, {local, Ref}},
