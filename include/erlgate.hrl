@@ -23,7 +23,6 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 %% THE SOFTWARE.
 %% ==========================================================================================================
-%% specs
 
 -type transport_spec() :: tcp | {ssl, [ssl:ssl_option()]}.
 
