@@ -126,8 +126,8 @@ call_dispatcher(Method, Message, #state{
     dispatcher_module = DispatcherModule,
     dispatcher_options = DispatcherOptions
 }) ->
-    Reply = try DispatcherModule:Method(Message, DispatcherOptions) of
-        Reply0 -> Reply0
+    try DispatcherModule:Method(Message, DispatcherOptions) of
+        Reply -> Reply
     catch Class:Reason ->
         Stacktrace = erlang:get_stacktrace(),
         erlang:Class([
@@ -136,8 +136,7 @@ call_dispatcher(Method, Message, #state{
             {original_call, Message},
             {stacktrace, Stacktrace}
         ])
-    end,
-    Reply.
+    end.
 
 send_reply(Reply, #state{
     socket = Socket,
