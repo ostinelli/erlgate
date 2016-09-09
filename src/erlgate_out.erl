@@ -146,18 +146,20 @@ handle_call({call, Message, Timeout}, _From, #state{
                 {ok, ReplyData} ->
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
-                            %% close socket
-                            error_logger:error_msg("[OUT|~s] Received invalid response data: ~p", [ChannelId, ReplyData]),
+                            error_logger:error_msg("[OUT|~s] Received invalid response data: ~p, closing socket", [ChannelId, ReplyData]),
+                            Transport:close(Socket),
                             {stop, erlgate_invalid_response_data, {error, erlgate_invalid_response_data}, State};
                         Reply ->
                             {reply, {ok, Reply}, State}
                     end;
                 {error, Reason} ->
-                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: ~p", [ChannelId, Message, Reason]),
+                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: ~p, closing socket", [ChannelId, Message, Reason]),
+                    Transport:close(Socket),
                     {stop, Reason, {error, Reason}, State}
             end;
         {error, Reason} ->
-            error_logger:error_msg("[OUT|~s] Error while sending the call ~p: ~p", [ChannelId, Message, Reason]),
+            error_logger:error_msg("[OUT|~s] Error while sending the call ~p: ~p, closing socket", [ChannelId, Message, Reason]),
+            Transport:close(Socket),
             {stop, Reason, {error, Reason}, State}
     end;
 
@@ -186,7 +188,8 @@ handle_cast({cast, Message}, #state{
         ok ->
             {noreply, State};
         {error, Reason} ->
-            error_logger:error_msg("[OUT|~s] Error while sending the cast ~p: ~p", [ChannelId, Message, Reason]),
+            error_logger:error_msg("[OUT|~s] Error while sending the cast ~p: ~p, closing socket", [ChannelId, Message, Reason]),
+            Transport:close(Socket),
             {stop, Reason, State}
     end;
 

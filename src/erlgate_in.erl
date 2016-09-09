@@ -32,8 +32,8 @@
 
 %% records
 -record(state, {
-    socket = undefined :: any(),
     transport = undefined :: atom(),
+    socket = undefined :: any(),
     channel_id = "" :: string(),
     messages = undefined :: any(),
     dispatcher_module = undefined :: any(),
@@ -68,8 +68,8 @@ init(Ref, Socket, Transport, Opts) ->
     {OK, Closed, Error} = Transport:messages(),
     %% build state
     State = #state{
-        socket = Socket,
         transport = Transport,
+        socket = Socket,
         channel_id = ChannelId,
         messages = {OK, Closed, Error},
         dispatcher_module = DispatcherModule,
@@ -83,8 +83,8 @@ init(Ref, Socket, Transport, Opts) ->
 %% ===================================================================
 -spec recv_loop(#state{}) -> ok.
 recv_loop(#state{
-    socket = Socket,
     transport = Transport,
+    socket = Socket,
     channel_id = ChannelId,
     messages = {OK, Closed, Error}
 } = State) ->
@@ -95,17 +95,20 @@ recv_loop(#state{
         {Closed, Socket} ->
             error_logger:info_msg("[IN|~s] Got closed", [ChannelId]);
         {Error, Socket, Reason} ->
-            error_logger:warning_msg("[IN|~s] Got error: ~p", [ChannelId, Reason])
+            error_logger:warning_msg("[IN|~s] Got error: ~p, closing socket", [ChannelId, Reason]),
+            Transport:close(Socket)
     end.
 
 -spec parse_request(Data :: binary(), #state{}) -> ok.
 parse_request(Data, #state{
+    transport = Transport,
+    socket = Socket,
     channel_id = ChannelId
 } = State) ->
     case catch binary_to_term(Data) of
         {'EXIT', {badarg, _}} ->
-            %% close socket
-            error_logger:warning_msg("[IN|~s] Received an invalid request data: ~p", [ChannelId, Data]);
+            error_logger:warning_msg("[IN|~s] Received an invalid request data: ~p, closing socket", [ChannelId, Data]),
+            Transport:close(Socket);
         Message ->
             %% process message
             process_message(Message, State)
@@ -138,9 +141,10 @@ call_dispatcher(Method, Message, #state{
         ])
     end.
 
+-spec send_reply(Reply :: any(), #state{}) -> ok.
 send_reply(Reply, #state{
-    socket = Socket,
-    transport = Transport
+    transport = Transport,
+    socket = Socket
 }) ->
     Data = term_to_binary(Reply),
     ok = Transport:send(Socket, Data).
