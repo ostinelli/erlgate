@@ -71,7 +71,7 @@ children_spec(ChannelsOutSpecs) ->
 -spec children_spec(ChannelsOutSpecs :: [channel_out_spec()], Specs :: [supervisor:child_spec()]) ->
     [supervisor:child_spec()].
 children_spec([], Specs) -> Specs;
-children_spec([{Ref, Host, Port, ConnectionNum, TransportSpec} | T], Specs) ->
+children_spec([{Ref, Host, Port, ChannelPassword, ConnectionNum, TransportSpec} | T], Specs) ->
     %% generate id
     Protocol = case TransportSpec of
         tcp -> tcp;
@@ -88,7 +88,8 @@ children_spec([{Ref, Host, Port, ConnectionNum, TransportSpec} | T], Specs) ->
         {host, Host},
         {port, Port},
         {transport_spec, TransportSpec},
-        {channel_id, ChannelId}
+        {channel_id, ChannelId},
+        {channel_password, ChannelPassword}
     ],
     %% generate spec
     SpecName = "erlgate_out_" ++ ChannelId,

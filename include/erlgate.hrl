@@ -30,12 +30,14 @@
     Ref :: atom(),
     Host :: string(),
     Port :: non_neg_integer(),
+    ChannelPassword :: string(),
     ConnectionNum :: non_neg_integer(),
     TransportSpec :: transport_spec()
 }.
 
 -type channel_in_spec() :: {
     ListenerPort :: non_neg_integer(),
+    ChannelPassword :: string(),
     DispatcherModule :: atom(),
     DispatcherOptions :: any(),
     TransportSpec :: transport_spec()
@@ -46,3 +48,5 @@
     channel_out_spec/0,
     channel_in_spec/0
 ]).
+
+-define(PROTOCOL_SIGNATURE, <<1, 234, 169, 56, 0, 22, 7, 15>>).

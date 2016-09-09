@@ -38,6 +38,7 @@
 %% macros
 -define(DEFAULT_RECONNECT_TIMEOUT_MS, 1000).
 -define(DEFAULT_RESPONSE_TIMEOUT, 30000).
+-define(DEFAULT_SIGNATURE_CONFIRMATION_TIMEOUT_MS, 30000).
 
 %% include
 -include("erlgate.hrl").
@@ -47,6 +48,7 @@
     host = "" :: string(),
     port = 0 :: non_neg_integer(),
     channel_id = "" :: string(),
+    channel_password = <<>> :: binary(),
     socket = undefined :: undefined | any(),
     timer_ref = undefined :: undefined | reference(),
     transport = gen_tcp :: gen_tcp | ssl,
@@ -99,6 +101,7 @@ init(Args) ->
     Host = proplists:get_value(host, Args),
     Port = proplists:get_value(port, Args),
     ChannelId = proplists:get_value(channel_id, Args),
+    ChannelPassword = list_to_binary(proplists:get_value(channel_password, Args)),
     {Transport, TransportOptions} = case proplists:get_value(transport_spec, Args) of
         tcp -> {gen_tcp, []};
         {ssl, SslOptions} -> {ssl, SslOptions}
@@ -108,6 +111,7 @@ init(Args) ->
         host = Host,
         port = Port,
         channel_id = ChannelId,
+        channel_password = ChannelPassword,
         transport = Transport,
         transport_options = TransportOptions
     },
@@ -147,20 +151,24 @@ handle_call({call, Message, Timeout}, _From, #state{
                     case catch binary_to_term(ReplyData) of
                         {'EXIT', {badarg, _}} ->
                             error_logger:error_msg("[OUT|~s] Received invalid response data: ~p, closing socket", [ChannelId, ReplyData]),
-                            Transport:close(Socket),
-                            {stop, erlgate_invalid_response_data, {error, erlgate_invalid_response_data}, State};
+                            State1 = disconnect(State),
+                            {stop, erlgate_invalid_response_data, {error, erlgate_invalid_response_data}, State1};
                         Reply ->
                             {reply, {ok, Reply}, State}
                     end;
+                {error, closed} ->
+                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: socket closed", [ChannelId, Message]),
+                    State1 = disconnect(State),
+                    {stop, closed, {error, closed}, State1};
                 {error, Reason} ->
-                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: ~p, closing socket", [ChannelId, Message, Reason]),
-                    Transport:close(Socket),
-                    {stop, Reason, {error, Reason}, State}
+                    error_logger:error_msg("[OUT|~s] Error while waiting response to the call ~p: ~p, closing socket if necessary", [ChannelId, Message, Reason]),
+                    State1 = disconnect(State),
+                    {stop, Reason, {error, Reason}, State1}
             end;
         {error, Reason} ->
             error_logger:error_msg("[OUT|~s] Error while sending the call ~p: ~p, closing socket", [ChannelId, Message, Reason]),
-            Transport:close(Socket),
-            {stop, Reason, {error, Reason}, State}
+            State1 = disconnect(State),
+            {stop, Reason, {error, Reason}, State1}
     end;
 
 handle_call(Request, From, State) ->
@@ -189,8 +197,8 @@ handle_cast({cast, Message}, #state{
             {noreply, State};
         {error, Reason} ->
             error_logger:error_msg("[OUT|~s] Error while sending the cast ~p: ~p, closing socket", [ChannelId, Message, Reason]),
-            Transport:close(Socket),
-            {stop, Reason, State}
+            State1 = disconnect(State),
+            {stop, Reason, State1}
     end;
 
 handle_cast(Msg, State) ->
@@ -247,13 +255,64 @@ connect(#state{
     %% connect
     case Transport:connect(Host, Port, Options) of
         {ok, Socket} ->
-            error_logger:info_msg("[OUT|~s] Connected", [ChannelId]),
-            State1#state{socket = Socket};
+            error_logger:info_msg("[OUT|~s] Connected, proceeding to sending signature", [ChannelId]),
+            send_channel_signature(State1#state{socket = Socket});
         {error, Reason} ->
             error_logger:error_msg("[OUT|~s] Error connecting: ~p, will try reconnecting in ~p ms", [
                 ChannelId, Reason, ?DEFAULT_RECONNECT_TIMEOUT_MS
             ]),
             timeout(State1)
+    end.
+
+-spec send_channel_signature(#state{}) -> #state{}.
+send_channel_signature(#state{
+    channel_id = ChannelId,
+    channel_password = ChannelPassword,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    %% build data
+    ProtoSignature = ?PROTOCOL_SIGNATURE,
+    Version = 1,
+    Epoch = erlgate_utils:epoch_time(),
+    Signature = crypto:hmac(sha256, ChannelPassword, integer_to_binary(Epoch)),
+    Data = <<
+        ProtoSignature:8/binary,
+        Version:16/integer,
+        Epoch:32/integer,
+        Signature:32/binary
+    >>,
+    %% send
+    case Transport:send(Socket, Data) of
+        ok ->
+            recv_channel_signature_response(State);
+        {error, Reason} ->
+            error_logger:error_msg("[OUT|~s] Error while sending the channel signature: ~p, closing socket", [ChannelId, Reason]),
+            disconnect(State)
+    end.
+
+-spec recv_channel_signature_response(#state{}) -> #state{}.
+recv_channel_signature_response(#state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    case Transport:recv(Socket, 0, ?DEFAULT_SIGNATURE_CONFIRMATION_TIMEOUT_MS) of
+        {ok, <<0>>} ->
+            error_logger:info_msg("[OUT|~s] Connection successful", [ChannelId]),
+            State;
+        {ok, <<1>>} ->
+            error_logger:error_msg("[OUT|~s] Unsupported channel version, closing socket", [ChannelId]),
+            disconnect(State);
+        {ok, <<2>>} ->
+            error_logger:error_msg("[OUT|~s] Epoch outside of accepted range, closing socket", [ChannelId]),
+            disconnect(State);
+        {ok, <<3>>} ->
+            error_logger:error_msg("[OUT|~s] Invalid Signature, closing socket", [ChannelId]),
+            disconnect(State);
+        {error, Reason} ->
+            error_logger:error_msg("[OUT|~s] Error while waiting for channel signature response: ~p, closing socket", [ChannelId, Reason]),
+            disconnect(State)
     end.
 
 -spec disconnect(#state{}) -> #state{}.

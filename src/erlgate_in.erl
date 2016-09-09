@@ -30,15 +30,24 @@
 -export([start_link/4]).
 -export([init/4]).
 
+%% macros
+-define(DEFAULT_SIGNATURE_RECV_TIMEOUT_MS, 30000).
+-define(DEFAULT_ACCEPTED_DATE_RANGE_SEC, 600).
+
 %% records
 -record(state, {
     transport = undefined :: atom(),
     socket = undefined :: any(),
     channel_id = "" :: string(),
+    channel_password = <<>> :: binary(),
     messages = undefined :: any(),
     dispatcher_module = undefined :: any(),
     dispatcher_options = undefined :: any()
 }).
+
+%% include
+-include("erlgate.hrl").
+
 
 %% ===================================================================
 %% Callbacks
@@ -54,14 +63,15 @@ init(Ref, Socket, Transport, Opts) ->
     %% ack
     ok = ranch:accept_ack(Ref),
     %% get options
-    ListenerPort = proplists:get_value(listener_port, Opts),
     Protocol = proplists:get_value(protocol, Opts),
+    ListenerPort = proplists:get_value(listener_port, Opts),
+    ChannelPassword = list_to_binary(proplists:get_value(channel_password, Opts)),
     DispatcherModule = proplists:get_value(dispatcher_module, Opts),
     DispatcherOptions = proplists:get_value(dispatcher_options, Opts),
     %% build ref
     {ok, {IpAddressTerm, _Port}} = Transport:peername(Socket),
     ChannelId = ":" ++ integer_to_list(ListenerPort) ++ "{" ++ atom_to_list(Protocol) ++ "}" ++ inet:ntoa(IpAddressTerm),
-    error_logger:info_msg("[IN|~s] Incoming erlgate channel connection", [ChannelId]),
+    error_logger:info_msg("[IN|~s] Connected, waiting for signature", [ChannelId]),
     %% set options
     Transport:setopts(Socket, [binary, {packet, 4}]),
     %% get messages
@@ -71,16 +81,107 @@ init(Ref, Socket, Transport, Opts) ->
         transport = Transport,
         socket = Socket,
         channel_id = ChannelId,
+        channel_password = ChannelPassword,
         messages = {OK, Closed, Error},
         dispatcher_module = DispatcherModule,
         dispatcher_options = DispatcherOptions
     },
-    %% enter loop
-    recv_loop(State).
+    %% verify
+    receive_channel_signature_data(State).
 
 %% ===================================================================
 %% Internal
 %% ===================================================================
+-spec receive_channel_signature_data(#state{}) -> #state{} | {stop, Reason :: any(), #state{}}.
+receive_channel_signature_data(#state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    case Transport:recv(Socket, 0, ?DEFAULT_SIGNATURE_RECV_TIMEOUT_MS) of
+        {ok, SignatureData} ->
+            <<
+                ProtocolSignature:8/binary,
+                Version:16/integer,
+                Epoch:32/integer,
+                Signature:32/binary
+            >> = SignatureData,
+            check_version(ProtocolSignature, Version, Epoch, Signature, State);
+        {error, Reason} ->
+            error_logger:error_msg("[IN|~s] Error while getting signature data: ~p, closing socket", [ChannelId, Reason]),
+            State1 = disconnect(State),
+            {stop, Reason, State1}
+    end.
+
+-spec check_version(
+    ProtocolSignature :: binary(),
+    Version :: integer(),
+    Epoch :: non_neg_integer(),
+    Signature :: binary(),
+    #state{}
+) -> ok.
+check_version(?PROTOCOL_SIGNATURE, 1, Epoch, Signature, State) ->
+    verify_date_range(Epoch, Signature, State);
+check_version(_, Version, _, _, #state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    error_logger:error_msg("[IN|~s] Unsupported channel version (~p), closing socket", [ChannelId, Version]),
+    Transport:send(Socket, <<1>>),
+    disconnect(State).
+
+-spec verify_date_range(
+    Epoch :: non_neg_integer(),
+    Signature :: binary(),
+    #state{}
+) -> ok.
+verify_date_range(Epoch, Signature, #state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    EpochOnServer = erlgate_utils:epoch_time(),
+    case abs(EpochOnServer - Epoch) =< ?DEFAULT_ACCEPTED_DATE_RANGE_SEC of
+        true ->
+            verify_channel_signature(Epoch, Signature, State);
+        false ->
+            error_logger:error_msg("[IN|~s] Epoch ~p outside of accepted range (on server: ~p), closing socket", [ChannelId, Epoch, EpochOnServer]),
+            Transport:send(Socket, <<1>>),
+            disconnect(State)
+    end.
+
+-spec verify_channel_signature(
+    Epoch :: non_neg_integer(),
+    Signature :: binary(),
+    #state{}
+) -> ok.
+verify_channel_signature(Epoch, Signature, #state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket,
+    channel_password = ChannelPassword
+} = State) ->
+    ComputedSignature = crypto:hmac(sha256, ChannelPassword, integer_to_binary(Epoch)),
+    case ComputedSignature of
+        Signature ->
+            ack_ok(State);
+        _ ->
+            error_logger:error_msg("[IN|~s] Invalid signature, closing socket", [ChannelId]),
+            Transport:send(Socket, <<3>>),
+            disconnect(State)
+    end.
+
+-spec ack_ok(#state{}) -> ok.
+ack_ok(#state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    Transport:send(Socket, <<0>>),
+    error_logger:info_msg("[IN|~s] Connection successful", [ChannelId]),
+    recv_loop(State).
+
 -spec recv_loop(#state{}) -> ok.
 recv_loop(#state{
     transport = Transport,
@@ -96,19 +197,17 @@ recv_loop(#state{
             error_logger:info_msg("[IN|~s] Got closed", [ChannelId]);
         {Error, Socket, Reason} ->
             error_logger:warning_msg("[IN|~s] Got error: ~p, closing socket", [ChannelId, Reason]),
-            Transport:close(Socket)
+            disconnect(State)
     end.
 
 -spec parse_request(Data :: binary(), #state{}) -> ok.
 parse_request(Data, #state{
-    transport = Transport,
-    socket = Socket,
     channel_id = ChannelId
 } = State) ->
     case catch binary_to_term(Data) of
         {'EXIT', {badarg, _}} ->
             error_logger:warning_msg("[IN|~s] Received an invalid request data: ~p, closing socket", [ChannelId, Data]),
-            Transport:close(Socket);
+            disconnect(State);
         Message ->
             %% process message
             process_message(Message, State)
@@ -148,3 +247,17 @@ send_reply(Reply, #state{
 }) ->
     Data = term_to_binary(Reply),
     ok = Transport:send(Socket, Data).
+
+-spec disconnect(#state{}) -> #state{}.
+disconnect(#state{
+    socket = Socket
+} = State) when Socket =:= undefined ->
+    State;
+disconnect(#state{
+    channel_id = ChannelId,
+    transport = Transport,
+    socket = Socket
+} = State) ->
+    Transport:close(Socket),
+    error_logger:info_msg("[IN|~s] Disconnected", [ChannelId]),
+    State#state{socket = undefined}.

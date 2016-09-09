@@ -39,10 +39,10 @@
 ) -> {ok, pid()} | {ok, pid(), State :: any()} | {error, any()}.
 start(_StartType, _StartArgs) ->
     %% start listeners
-    erlgate_in_ranch:start_listener(),
+    erlgate_in_ranch:start_listeners(),
     %% start sups
     erlgate_out_sup:start_link().
 
 -spec stop(State :: any()) -> ok.
 stop(_State) ->
-    ok = erlgate_in_ranch:stop_listener().
+    ok = erlgate_in_ranch:stop_listeners().

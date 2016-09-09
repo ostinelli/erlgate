@@ -27,6 +27,7 @@
 
 %% API
 -export([get_env_value/1, get_env_value/2]).
+-export([epoch_time/0]).
 -export([clean_options/2]).
 
 
@@ -44,6 +45,11 @@ get_env_value(Key, Default) ->
         undefined -> {ok, Default};
         {ok, Val} -> {ok, Val}
     end.
+
+-spec epoch_time() -> non_neg_integer().
+epoch_time() ->
+    {M, S, _} = os:timestamp(),
+    M * 1000000 + S.
 
 -spec clean_options(Options :: [proplists:property()], [atom()]) -> [proplists:property()].
 clean_options(Options, []) -> Options;
