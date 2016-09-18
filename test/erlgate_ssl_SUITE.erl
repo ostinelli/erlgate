@@ -117,8 +117,15 @@ init_per_group(_GroupName, Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
     %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-ssl.config"),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-ssl-slave.config"),
+    ok = application:set_env(erlgate, channels_in, [
+        {9100, "pass-for-ssl-9100", erlgate_test_dispatcher, [], {ssl, [
+            {certfile, "../../fixtures/channel-in.crt"},
+            {keyfile, "../../fixtures/channel-in.key"}
+        ]}}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_out, [
+        {node_ssl, "localhost", 9100, "pass-for-ssl-9100", 1, {ssl, []}}
+    ]]),
     %% start
     ok = erlgate:start(),
     ok = rpc:call(SlaveNode, erlgate, start, []),

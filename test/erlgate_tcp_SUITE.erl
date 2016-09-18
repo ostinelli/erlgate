@@ -58,8 +58,7 @@
 %% -------------------------------------------------------------------
 all() ->
     [
-        {group, one_way},
-        {group, two_ways}
+        {group, intergration}
     ].
 
 %% -------------------------------------------------------------------
@@ -76,15 +75,13 @@ all() ->
 %% -------------------------------------------------------------------
 groups() ->
     [
-        {one_way, [shuffle], [
+        {intergration, [shuffle], [
             call_one_way,
             call_one_way_with_options,
             call_one_way_with_timeout,
             call_one_way_with_error,
+            call_both_ways,
             cast_one_way
-        ]},
-        {two_ways, [shuffle], [
-            call_both_ways
         ]}
     ].
 %% -------------------------------------------------------------------
@@ -124,34 +121,7 @@ end_per_suite(Config) ->
 %% Config0 = Config1 = [tuple()]
 %% Reason = term()
 %% -------------------------------------------------------------------
-init_per_group(one_way, Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
-    ok = application:unset_env(erlgate, channels_in),
-    ok = rpc:call(SlaveNode, application, unset_env, [erlgate, channels_out]),
-    %% start
-    ok = erlgate:start(),
-    ok = rpc:call(SlaveNode, erlgate, start, []),
-    %% wait for connection
-    timer:sleep(1500),
-    %% return
-    Config;
-init_per_group(two_ways, Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% set variables
-    erlgate_test_suite_helper:set_environment_variables(node(), "erlgate-tcp.config"),
-    erlgate_test_suite_helper:set_environment_variables(SlaveNode, "erlgate-tcp-slave.config"),
-    %% start
-    ok = erlgate:start(),
-    ok = rpc:call(SlaveNode, erlgate, start, []),
-    %% wait for connection
-    timer:sleep(1500),
-    %% return
-    Config.
+init_per_group(_GroupName, Config) -> Config.
 
 %% -------------------------------------------------------------------
 %% Function: end_per_group(GroupName, Config0) ->
@@ -159,13 +129,8 @@ init_per_group(two_ways, Config) ->
 %% GroupName = atom()
 %% Config0 = Config1 = [tuple()]
 %% -------------------------------------------------------------------
-end_per_group(_GroupName, Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% stop
-    ok = erlgate:stop(),
-    ok = rpc:call(SlaveNode, erlgate, stop, []).
-    
+end_per_group(_GroupName, _Config) -> ok.
+
 % ----------------------------------------------------------------------------------------------------------
 % Function: init_per_testcase(TestCase, Config0) ->
 %				Config1 | {skip,Reason} | {skip_and_save,Reason,Config1}
@@ -182,31 +147,146 @@ init_per_testcase(_TestCase, Config) -> Config.
 % Config0 = Config1 = [tuple()]
 % Reason = term()
 % ----------------------------------------------------------------------------------------------------------
-end_per_testcase(_TestCase, _Config) -> ok.
+end_per_testcase(_TestCase, Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% stop
+    ok = erlgate:stop(),
+    ok = rpc:call(SlaveNode, erlgate, stop, []).
 
 %% ===================================================================
 %% Tests
 %% ===================================================================
-call_one_way(_Config) ->
+call_one_way(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp},
+        {node_2, "localhost", 8901, "pass-for-8901", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp},
+        {8901, "pass-for-8901", erlgate_test_dispatcher_2, [], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% test
     {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
     {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>).
 
-call_one_way_with_options(_Config) ->
+call_one_way_with_options(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_with_option, "localhost", 8900, "pass-for-8900", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [with_options], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% test
     {called_with_options, <<"my test message">>} = erlgate:call(node_with_option, <<"my test message">>).
 
-call_one_way_with_timeout(_Config) ->
+call_one_way_with_timeout(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% test
     Result = (catch erlgate:call(node_1, <<"my test message">>, 100)),
     {'EXIT', {timeout, {original_call, {node_1, <<"my test message">>}}}} = Result,
     %% wait for gen_server up
     timer:sleep(500).
 
-call_one_way_with_error(_Config) ->
+call_one_way_with_error(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_error, "localhost", 8999, "pass-for-8999", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8999, "pass-for-8999", erlgate_test_dispatcher, [raise_error], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% test
     Result = (catch erlgate:call(node_error, <<"my test message">>)),
     {'EXIT', {closed, {original_call, {node_error, <<"my test message">>}}}} = Result,
     %% wait for gen_server up
     timer:sleep(500).
 
-cast_one_way(_Config) ->
+call_both_ways(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_in, [
+        {8950, "pass-for-8950", erlgate_test_dispatcher, [], tcp},
+        {8951, "pass-for-8951", erlgate_test_dispatcher_2, [], tcp}
+    ]),
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp},
+        {node_2, "localhost", 8901, "pass-for-8901", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp},
+        {8901, "pass-for-8901", erlgate_test_dispatcher_2, [], tcp}
+    ]]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_out, [
+        {node_3, "localhost", 8950, "pass-for-8950", 1, tcp},
+        {node_4, "localhost", 8951, "pass-for-8951", 1, tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% call from local to remote and get response back
+    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
+    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>),
+    %% call from remote to local and get response back
+    {received, <<"my test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_3, <<"my test message from remote">>]),
+    {received_from_2, <<"my other test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_4, <<"my other test message from remote">>]).
+
+cast_one_way(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp},
+        {node_2, "localhost", 8901, "pass-for-8901", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp},
+        {8901, "pass-for-8901", erlgate_test_dispatcher_2, [], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
     %% register local
     ResultPid = self(),
     global:register_name(erlgate_SUITE_result, ResultPid),
@@ -223,13 +303,3 @@ cast_one_way(_Config) ->
     after 2000 ->
         ok = did_not_receive_cast_message_from_node_2
     end.
-
-call_both_ways(Config) ->
-    %% get slave
-    SlaveNode = proplists:get_value(slave_node, Config),
-    %% call from local to remote and get response back
-    {received, <<"my test message">>} = erlgate:call(node_1, <<"my test message">>),
-    {received_from_2, <<"my other test message">>} = erlgate:call(node_2, <<"my other test message">>),
-    %% call from remote to local and get response back
-    {received, <<"my test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_3, <<"my test message from remote">>]),
-    {received_from_2, <<"my other test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_4, <<"my other test message from remote">>]).

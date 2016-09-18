@@ -26,28 +26,13 @@
 -module(erlgate_test_suite_helper).
 
 %% API
--export([set_environment_variables/2]).
 -export([start_slave/1, stop_slave/1]).
 -export([connect_node/1, disconnect_node/1]).
-
-%% macros
--define(ERLGATE_TEST_CONFIG_FILENAME, "erlgate-test.config").
--define(ERLGATE_SLAVE_TEST_CONFIG_FILENAME, "erlgate-slave-test.config").
 
 
 %% ===================================================================
 %% API
 %% ===================================================================
-set_environment_variables(Node, ConfigFileName) ->
-    % read config file
-    ConfigFilePath = filename:join([filename:dirname(code:which(?MODULE)), ConfigFileName]),
-    {ok, [AppsConfig]} = file:consult(ConfigFilePath),
-    % loop to set variables
-    F = fun({AppName, AppConfig}) ->
-        set_environment_for_app(Node, AppName, AppConfig)
-    end,
-    lists:foreach(F, AppsConfig).
-
 start_slave(NodeShortName) ->
     CodePath = code:get_path(),
     {ok, Node} = ct_slave:start(NodeShortName, [{boot_timeout, 10}]),
@@ -62,12 +47,3 @@ connect_node(Node) ->
 
 disconnect_node(Node) ->
     erlang:disconnect_node(Node).
-
-%% ===================================================================
-%% Internal
-%% ===================================================================
-set_environment_for_app(Node, AppName, AppConfig) ->
-    F = fun({Key, Val}) ->
-        ok = rpc:call(Node, application, set_env, [AppName, Key, Val])
-    end,
-    lists:foreach(F, AppConfig).

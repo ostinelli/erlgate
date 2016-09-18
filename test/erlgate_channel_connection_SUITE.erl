@@ -110,7 +110,9 @@ end_per_suite(_Config) -> ok.
 %% -------------------------------------------------------------------
 init_per_group(_GroupName, Config) ->
     %% set variables
-    application:set_env(erlgate, channels_in, [{8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp}]),
+    application:set_env(erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp}
+    ]),
     %% start
     ok = erlgate:start(),
     %% return
