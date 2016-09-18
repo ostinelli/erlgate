@@ -302,12 +302,15 @@ recv_channel_signature_response(#state{
             error_logger:info_msg("[OUT|~s] Connection successful", [ChannelId]),
             State;
         {ok, <<1>>} ->
-            error_logger:error_msg("[OUT|~s] Unsupported channel version, closing socket", [ChannelId]),
+            error_logger:error_msg("[OUT|~s] Invalid channel opening data sent, closing socket", [ChannelId]),
             disconnect(State);
         {ok, <<2>>} ->
-            error_logger:error_msg("[OUT|~s] Epoch outside of accepted range, closing socket", [ChannelId]),
+            error_logger:error_msg("[OUT|~s] Unsupported channel signature or version, closing socket", [ChannelId]),
             disconnect(State);
         {ok, <<3>>} ->
+            error_logger:error_msg("[OUT|~s] Epoch outside of accepted range, closing socket", [ChannelId]),
+            disconnect(State);
+        {ok, <<4>>} ->
             error_logger:error_msg("[OUT|~s] Invalid Signature, closing socket", [ChannelId]),
             disconnect(State);
         {error, Reason} ->

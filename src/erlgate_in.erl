@@ -92,25 +92,27 @@ init(Ref, Socket, Transport, Opts) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
--spec receive_channel_signature_data(#state{}) -> #state{} | {stop, Reason :: any(), #state{}}.
+-spec receive_channel_signature_data(#state{}) -> #state{}.
 receive_channel_signature_data(#state{
     channel_id = ChannelId,
     transport = Transport,
     socket = Socket
 } = State) ->
     case Transport:recv(Socket, 0, ?DEFAULT_SIGNATURE_RECV_TIMEOUT_MS) of
-        {ok, SignatureData} ->
-            <<
-                ProtocolSignature:8/binary,
-                Version:16/integer,
-                Epoch:32/integer,
-                Signature:32/binary
-            >> = SignatureData,
+        {ok, <<
+            ProtocolSignature:8/binary,
+            Version:16/integer,
+            Epoch:32/integer,
+            Signature:32/binary
+        >>} ->
             check_version(ProtocolSignature, Version, Epoch, Signature, State);
+        {ok, InvalidData} ->
+            error_logger:error_msg("[IN|~s] Invalid channel opening data received: ~p, closing socket", [ChannelId, InvalidData]),
+            Transport:send(Socket, <<1>>),
+            disconnect(State);
         {error, Reason} ->
             error_logger:error_msg("[IN|~s] Error while getting signature data: ~p, closing socket", [ChannelId, Reason]),
-            State1 = disconnect(State),
-            {stop, Reason, State1}
+            disconnect(State)
     end.
 
 -spec check_version(
@@ -127,8 +129,8 @@ check_version(_, Version, _, _, #state{
     transport = Transport,
     socket = Socket
 } = State) ->
-    error_logger:error_msg("[IN|~s] Unsupported channel version (~p), closing socket", [ChannelId, Version]),
-    Transport:send(Socket, <<1>>),
+    error_logger:error_msg("[IN|~s] Unsupported channel signature or version (~p), closing socket", [ChannelId, Version]),
+    Transport:send(Socket, <<2>>),
     disconnect(State).
 
 -spec verify_date_range(
@@ -147,7 +149,7 @@ verify_date_range(Epoch, Signature, #state{
             verify_channel_signature(Epoch, Signature, State);
         false ->
             error_logger:error_msg("[IN|~s] Epoch ~p outside of accepted range (on server: ~p), closing socket", [ChannelId, Epoch, EpochOnServer]),
-            Transport:send(Socket, <<1>>),
+            Transport:send(Socket, <<3>>),
             disconnect(State)
     end.
 
@@ -168,7 +170,7 @@ verify_channel_signature(Epoch, Signature, #state{
             ack_ok(State);
         _ ->
             error_logger:error_msg("[IN|~s] Invalid signature, closing socket", [ChannelId]),
-            Transport:send(Socket, <<3>>),
+            Transport:send(Socket, <<4>>),
             disconnect(State)
     end.
 
