@@ -25,5 +25,12 @@
 %% ==========================================================================================================
 -module(erlgate_dispatcher).
 
--callback handle_call(Message :: any(), Options :: any()) -> Reply :: any().
--callback handle_cast(Message :: any(), Options :: any()) -> any().
+-callback init(Options :: any()) ->
+    {ok, State :: any()}.
+
+-callback handle_call(Message :: any(), State :: any()) ->
+    {reply, Reply :: any(), State :: any()} |
+    {noreply, State :: any()}.
+
+-callback handle_cast(Message :: any(), State :: any()) ->
+    any().

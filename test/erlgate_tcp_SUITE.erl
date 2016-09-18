@@ -38,7 +38,9 @@
     call_one_way_with_timeout/1,
     call_one_way_with_error/1,
     call_both_ways/1,
-    cast_one_way/1
+    call_changed_state/1,
+    cast_one_way/1,
+    cast_changed_state/1
 ]).
 
 %% include
@@ -58,7 +60,7 @@
 %% -------------------------------------------------------------------
 all() ->
     [
-        {group, intergration}
+        {group, integration}
     ].
 
 %% -------------------------------------------------------------------
@@ -75,13 +77,15 @@ all() ->
 %% -------------------------------------------------------------------
 groups() ->
     [
-        {intergration, [shuffle], [
+        {integration, [shuffle], [
             call_one_way,
             call_one_way_with_options,
             call_one_way_with_timeout,
             call_one_way_with_error,
             call_both_ways,
-            cast_one_way
+            call_changed_state,
+            cast_one_way,
+            cast_changed_state
         ]}
     ].
 %% -------------------------------------------------------------------
@@ -204,7 +208,7 @@ call_one_way_with_timeout(Config) ->
         {node_1, "localhost", 8900, "pass-for-8900", 1, tcp}
     ]),
     ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
-        {8900, "pass-for-8900", erlgate_test_dispatcher, [], tcp}
+        {8900, "pass-for-8900", erlgate_test_dispatcher, [timeout], tcp}
     ]]),
     %% start
     ok = erlgate:start(),
@@ -270,6 +274,28 @@ call_both_ways(Config) ->
     {received, <<"my test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_3, <<"my test message from remote">>]),
     {received_from_2, <<"my other test message from remote">>} = rpc:call(SlaveNode, erlgate, call, [node_4, <<"my other test message from remote">>]).
 
+call_changed_state(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher_2, [], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% get current state
+    {ok, undefined} = erlgate:call(node_1, get_state),
+    %% set new state
+    ok = erlgate:call(node_1, {set_state, new_state}),
+    %% get current state
+    {ok, new_state} = erlgate:call(node_1, get_state).
+    
 cast_one_way(Config) ->
     %% get slave
     SlaveNode = proplists:get_value(slave_node, Config),
@@ -303,3 +329,25 @@ cast_one_way(Config) ->
     after 2000 ->
         ok = did_not_receive_cast_message_from_node_2
     end.
+
+cast_changed_state(Config) ->
+    %% get slave
+    SlaveNode = proplists:get_value(slave_node, Config),
+    %% set variables
+    ok = application:set_env(erlgate, channels_out, [
+        {node_1, "localhost", 8900, "pass-for-8900", 1, tcp}
+    ]),
+    ok = rpc:call(SlaveNode, application, set_env, [erlgate, channels_in, [
+        {8900, "pass-for-8900", erlgate_test_dispatcher_2, [], tcp}
+    ]]),
+    %% start
+    ok = erlgate:start(),
+    ok = rpc:call(SlaveNode, erlgate, start, []),
+    %% wait for connection
+    timer:sleep(1500),
+    %% get current state
+    {ok, undefined} = erlgate:call(node_1, get_state),
+    %% cast from local to remote
+    erlgate:cast(node_1, {set_state, new_state}),
+    %% get current state
+    {ok, new_state} = erlgate:call(node_1, get_state).

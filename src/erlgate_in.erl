@@ -42,7 +42,8 @@
     channel_password = <<>> :: binary(),
     messages = undefined :: any(),
     dispatcher_module = undefined :: any(),
-    dispatcher_options = undefined :: any()
+    dispatcher_options = undefined :: any(),
+    dispatcher_state = undefined :: any()
 }).
 
 %% include
@@ -167,12 +168,31 @@ verify_channel_signature(Epoch, Signature, #state{
     ComputedSignature = crypto:hmac(sha256, ChannelPassword, integer_to_binary(Epoch)),
     case ComputedSignature of
         Signature ->
-            ack_ok(State);
+            dispatcher_init(State);
         _ ->
             error_logger:error_msg("[IN|~s] Invalid signature, closing socket", [ChannelId]),
             Transport:send(Socket, <<4>>),
             disconnect(State)
     end.
+
+-spec dispatcher_init(#state{}) -> ok.
+dispatcher_init(#state{
+    channel_id = ChannelId,
+    dispatcher_module = DispatcherModule,
+    dispatcher_options = DispatcherOptions
+} = State) ->
+    DispatcherState = try DispatcherModule:init(DispatcherOptions) of
+        {ok, DispatcherState0} -> DispatcherState0
+    catch Class:Reason ->
+        Stacktrace = erlang:get_stacktrace(),
+        erlang:Class([
+            {reason, Reason},
+            {channel_id, ChannelId},
+            {dispatcher_init_options, DispatcherOptions},
+            {stacktrace, Stacktrace}
+        ])
+    end,
+    ack_ok(State#state{dispatcher_state = DispatcherState}).
 
 -spec ack_ok(#state{}) -> ok.
 ack_ok(#state{
@@ -217,20 +237,24 @@ parse_request(Data, #state{
 
 -spec process_message(Message :: any(), #state{}) -> ok.
 process_message({call, Message}, State) ->
-    Reply = call_dispatcher(handle_call, Message, State),
-    send_reply(Reply, State),
-    recv_loop(State);
+    case call_dispatcher(handle_call, Message, State) of
+        {reply, Reply, NewDispatcherState} ->
+            send_reply(Reply, State),
+            recv_loop(State#state{dispatcher_state = NewDispatcherState});
+        {noreply, NewDispatcherState} ->
+            recv_loop(State#state{dispatcher_state = NewDispatcherState})
+    end;
 process_message({cast, Message}, State) ->
-    call_dispatcher(handle_cast, Message, State),
-    recv_loop(State).
+    {noreply, NewDispatcherState} = call_dispatcher(handle_cast, Message, State),
+    recv_loop(State#state{dispatcher_state = NewDispatcherState}).
 
 -spec call_dispatcher(Method :: atom(), Message :: any(), #state{}) -> Reply :: any().
 call_dispatcher(Method, Message, #state{
     channel_id = ChannelId,
     dispatcher_module = DispatcherModule,
-    dispatcher_options = DispatcherOptions
+    dispatcher_state = DispatcherState
 }) ->
-    try DispatcherModule:Method(Message, DispatcherOptions) of
+    try DispatcherModule:Method(Message, DispatcherState) of
         Reply -> Reply
     catch Class:Reason ->
         Stacktrace = erlang:get_stacktrace(),

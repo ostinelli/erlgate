@@ -27,23 +27,37 @@
 -behaviour(erlgate_dispatcher).
 
 %% Callbacks
+-export([init/1]).
 -export([handle_call/2]).
 -export([handle_cast/2]).
 
-%% TODO: should we use {reply, Message} formats?
--spec handle_call(Message :: any, Options :: any()) -> any().
-handle_call(Message, Options) ->
-    WithOptions = lists:member(with_options, Options),
-    RaiseError = lists:member(raise_error, Options),
+%% records
+-record(state, {
+    with_options = false :: boolean(),
+    raise_error = false :: boolean(),
+    timeout = false :: boolean()
+}).
+
+
+init(Options) ->
+    {ok, #state{
+        with_options = lists:member(with_options, Options),
+        raise_error = lists:member(raise_error, Options),
+        timeout = lists:member(timeout, Options)
+    }}.
+
+handle_call(Message, State) ->
     if
-        WithOptions =:= true ->
-            {called_with_options, Message};
-        RaiseError =:= true ->
+        State#state.with_options =:= true ->
+            {reply, {called_with_options, Message}, State};
+        State#state.raise_error =:= true ->
             exit(blow_up);
+        State#state.timeout =:= true ->
+            {noreply, State};
         true ->
-            timer:sleep(200),
-            {received, Message}
+            {reply, {received, Message}, State}
     end.
 
-handle_cast(Message, _Options) ->
-    global:send(erlgate_SUITE_result, {received, Message}).
+handle_cast(Message, State) ->
+    global:send(erlgate_SUITE_result, {received, Message}),
+    {noreply, State}.

@@ -27,13 +27,23 @@
 -behaviour(erlgate_dispatcher).
 
 %% Callbacks
+-export([init/1]).
 -export([handle_call/2]).
 -export([handle_cast/2]).
 
-%% TODO: should we use {reply, Message} formats?
--spec handle_call(Message :: any, Options :: any()) -> any().
-handle_call(Message, _Options) ->
-    {received_from_2, Message}.
 
-handle_cast(Message, _Options) ->
-    global:send(erlgate_SUITE_result, {received_from_2, Message}).
+init(_Options) ->
+    {ok, undefined}.
+
+handle_call(get_state, State) ->
+    {reply, {ok, State}, State};
+handle_call({set_state, NewState}, _State) ->
+    {reply, ok, NewState};
+handle_call(Message, State) ->
+    {reply, {received_from_2, Message}, State}.
+
+handle_cast({set_state, NewState}, _State) ->
+    {noreply, NewState};
+handle_cast(Message, State) ->
+    global:send(erlgate_SUITE_result, {received_from_2, Message}),
+    {noreply, State}.
