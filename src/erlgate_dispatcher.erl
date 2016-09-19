@@ -33,4 +33,4 @@
     {noreply, State :: any()}.
 
 -callback handle_cast(Message :: any(), State :: any()) ->
-    any().
+    {noreply, State :: any()}.

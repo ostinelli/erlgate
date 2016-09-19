@@ -93,7 +93,7 @@ init(Ref, Socket, Transport, Opts) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
--spec receive_channel_signature_data(#state{}) -> #state{}.
+-spec receive_channel_signature_data(#state{}) -> ok.
 receive_channel_signature_data(#state{
     channel_id = ChannelId,
     transport = Transport,
@@ -274,7 +274,7 @@ send_reply(Reply, #state{
     Data = term_to_binary(Reply),
     ok = Transport:send(Socket, Data).
 
--spec disconnect(#state{}) -> #state{}.
+-spec disconnect(#state{}) -> ok.
 disconnect(#state{
     socket = Socket
 } = State) when Socket =:= undefined ->
@@ -285,5 +285,4 @@ disconnect(#state{
     socket = Socket
 } = State) ->
     Transport:close(Socket),
-    error_logger:info_msg("[IN|~s] Disconnected", [ChannelId]),
-    State#state{socket = undefined}.
+    error_logger:info_msg("[IN|~s] Disconnected", [ChannelId]).
